@@ -66,7 +66,7 @@ describe('Collector tests', function() {
         process.env.CUSTOMCONNSTR_APP_AL_API_ENDPOINT = mock.AL_API_ENDPOINT;
         process.env.CUSTOMCONNSTR_APP_AL_RESIDENCY = 'default';
         process.env.APP_INGEST_ENDPOINT = mock.INGEST_API_ENDPOINT;
-        var collector = new AlAzureCollector({}, 'ehub', '1.0.0');
+        var collector = new AlAzureCollector(mock.DEFAULT_FUNCTION_CONTEXT, 'ehub', '1.0.0');
         var formatFun = function(msg) {
             sinon.assert.match(msg, 'msg');
             return {
@@ -110,7 +110,7 @@ describe('Collector tests', function() {
             alIngestEndpoint: 'alIngestEndpoint',
             alDataResidency: 'alResidency'
         };
-        var collector = new AlAzureCollector({}, 'ehub', '1.0.0', alOpts);
+        var collector = new AlAzureCollector(mock.DEFAULT_FUNCTION_CONTEXT, 'ehub', '1.0.0', alOpts);
         var formatFun = function(msg) {
             sinon.assert.match(msg, 'msg');
             return {

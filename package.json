@@ -20,7 +20,9 @@
   "dependencies": {
     "al-collector-js": "git://github.com/alertlogic/al-collector-js#master",
     "async": "*",
-    "azure": "^2.3.1-preview"
+    "azure": "^2.3.1-preview",
+    "parse-key-value": "^1.0.0",
+    "path": "^0.12.7"
   },
   "author": "Alert Logic Inc."
 }
