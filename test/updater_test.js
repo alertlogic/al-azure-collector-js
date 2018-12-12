@@ -8,8 +8,6 @@
  * -----------------------------------------------------------------------------
  */
 const assert = require('assert');
-const rewire = require('rewire');
-const sinon = require('sinon');
 const nock = require('nock');
 const AlAzureUpdater = require('../updater').AlAzureUpdater;
 

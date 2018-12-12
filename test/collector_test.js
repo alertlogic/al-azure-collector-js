@@ -8,9 +8,7 @@
  * -----------------------------------------------------------------------------
  */
 const assert = require('assert');
-const rewire = require('rewire');
 const sinon = require('sinon');
-const nock = require('nock');
 const fs = require('fs');
 const alcollector = require('al-collector-js');
 

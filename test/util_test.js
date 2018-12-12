@@ -8,9 +8,7 @@
  * -----------------------------------------------------------------------------
  */
 const assert = require('assert');
-const sinon = require('sinon');
 
-const mock = require('./mock');
 const m_util = require('../util');
 
 describe('Util tests', function() {

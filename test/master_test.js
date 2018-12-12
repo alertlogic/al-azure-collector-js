@@ -8,7 +8,6 @@
  * -----------------------------------------------------------------------------
  */
 const assert = require('assert');
-const rewire = require('rewire');
 const sinon = require('sinon');
 const nock = require('nock');
 const fs = require('fs');
@@ -20,7 +19,6 @@ const mock = require('./mock');
 
 describe('Master tests', function() {
     var fakePost;
-    var fakePut;
     var fakeGet;
     var fakeAuth;
     var clock;
@@ -56,19 +54,19 @@ describe('Master tests', function() {
 
     it('Verify collector register with endpoints update', function(done) {
         // Mock Azure HTTP calls
-        var tokenMock = nock('https://login.microsoftonline.com:443', {'encodedQueryParams':true})
+        nock('https://login.microsoftonline.com:443', {'encodedQueryParams':true})
         .post(/token$/, /.*/ )
         .query(true)
         .times(5)
         .reply(200, mock.AZURE_TOKEN_MOCK);
         
-        var appsettingsPutMock = nock('https://management.azure.com:443', {'encodedQueryParams':true})
+        nock('https://management.azure.com:443', {'encodedQueryParams':true})
         .put(/appsettings/, /.*/ )
         .query(true)
         .times(2)
         .reply(200, {});
         
-        var appsettingsPostMock = nock('https://management.azure.com:443', {'encodedQueryParams':true})
+        nock('https://management.azure.com:443', {'encodedQueryParams':true})
         .post(/appsettings/, /.*/ )
         .query(true)
         .times(2)
@@ -129,19 +127,19 @@ describe('Master tests', function() {
     
     it('Verify register with custom parameters, no endpoints updates', function(done) {
         // Mock Azure HTTP calls
-        var tokenMock = nock('https://login.microsoftonline.com:443', {'encodedQueryParams':true})
+        nock('https://login.microsoftonline.com:443', {'encodedQueryParams':true})
         .post(/token$/, /.*/ )
         .query(true)
         .times(5)
         .reply(200, mock.AZURE_TOKEN_MOCK);
         
-        var appsettingsPutMock = nock('https://management.azure.com:443', {'encodedQueryParams':true})
+        nock('https://management.azure.com:443', {'encodedQueryParams':true})
         .put(/appsettings/, /.*/ )
         .query(true)
         .times(2)
         .reply(200, {});
         
-        var appsettingsPostMock = nock('https://management.azure.com:443', {'encodedQueryParams':true})
+        nock('https://management.azure.com:443', {'encodedQueryParams':true})
         .post(/appsettings/, /.*/ )
         .query(true)
         .times(2)
@@ -224,13 +222,13 @@ describe('Master tests', function() {
     
     it('Verify checkin ok', function(done) {
         // Mock Azure HTTP calls
-        var tokenMock = nock('https://login.microsoftonline.com:443', {'encodedQueryParams':true})
+        nock('https://login.microsoftonline.com:443', {'encodedQueryParams':true})
         .post(/token$/, /.*/ )
         .query(true)
         .times(5)
         .reply(200, mock.AZURE_TOKEN_MOCK);
         
-        var webAppGetMock = nock('https://management.azure.com:443', {'encodedQueryParams':true})
+        nock('https://management.azure.com:443', {'encodedQueryParams':true})
         .get(/kktest11$/, /.*/ )
         .query(true)
         .times(2)
@@ -294,13 +292,13 @@ describe('Master tests', function() {
     
     it('Verify checkin error', function(done) {
         // Mock Azure HTTP calls
-        var tokenMock = nock('https://login.microsoftonline.com:443', {'encodedQueryParams':true})
+        nock('https://login.microsoftonline.com:443', {'encodedQueryParams':true})
         .post(/token$/, /.*/ )
         .query(true)
         .times(5)
         .reply(200, mock.AZURE_TOKEN_MOCK);
         
-        var webAppGetMock = nock('https://management.azure.com:443', {'encodedQueryParams':true})
+        nock('https://management.azure.com:443', {'encodedQueryParams':true})
         .get(/kktest11$/, /.*/ )
         .query(true)
         .times(2)
