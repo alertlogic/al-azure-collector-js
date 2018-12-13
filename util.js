@@ -43,7 +43,7 @@ const verifyObjProps = function (obj, expectedProps) {
     var expectedKeys = Object.keys(expectedProps);
     
     for (let k of expectedKeys) {
-        if (obj[k] != expectedProps[k]) {
+        if (obj[k] !== expectedProps[k]) {
             var retObj = {};
             retObj[k] = obj[k];
             return retObj;
