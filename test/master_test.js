@@ -28,6 +28,7 @@ describe('Master tests', function() {
         if (!nock.isActive()) {
             nock.activate();
         }
+        // Useful for capturing HTTP calls for new tests.
         //nock.recorder.rec();
     });
     after(function(){
@@ -299,7 +300,7 @@ describe('Master tests', function() {
         .reply(200, mock.AZURE_TOKEN_MOCK);
         
         nock('https://management.azure.com:443', {'encodedQueryParams':true})
-        .get(/kktest11$/, /.*/ )
+        .get(/kktest11-name$/, /.*/ )
         .query(true)
         .times(2)
         .reply(200, mock.getAzureWebApp('Limited'));
@@ -327,9 +328,9 @@ describe('Master tests', function() {
         process.env.COLLECTOR_SOURCE_ID = 'existing-source-id';
         
         // Expected Azure parameters
-        process.env.WEBSITE_SITE_NAME = 'kktest11';
+        process.env.WEBSITE_SITE_NAME = 'kktest11-name';
         process.env.APP_SUBSCRIPTION_ID = 'subscription-id';
-        process.env.APP_RESOURCE_GROUP = 'kktest11';
+        process.env.APP_RESOURCE_GROUP = 'kktest11-rg';
         process.env.APP_TENANT_ID = 'tenant-id';
         process.env.CUSTOMCONNSTR_APP_CLIENT_ID = 'client-id';
         process.env.CUSTOMCONNSTR_APP_CLIENT_SECRET = 'client-secret';
@@ -341,8 +342,8 @@ describe('Master tests', function() {
             const expectedCheckin = { 
                 body: {
                     version: '1.0.0',
-                    web_app_name: 'kktest11',
-                    app_resource_group: 'kktest11',
+                    web_app_name: 'kktest11-name',
+                    app_resource_group: 'kktest11-rg',
                     app_tenant_id: 'tenant-id',
                     subscription_id: 'subscription-id',
                     host_id: 'existing-host-id',
@@ -353,9 +354,46 @@ describe('Master tests', function() {
                     error_code: "ALAZU00001"
                 }
             };
-            const expectedUrl = '/azure/ehub/checkin/subscription-id/kktest11/kktest11';
+            const expectedUrl = '/azure/ehub/checkin/subscription-id/kktest11-rg/kktest11-name';
             fakeStats.restore();
             sinon.assert.calledWith(fakePost, expectedUrl, expectedCheckin);
+            done();
+        });
+    });
+    
+    it('Verify collector deregister', function(done) {
+     // Mock Alert Logic HTTP calls
+        var fakeDelete = sinon.stub(alcollector.AlServiceC.prototype, 'deleteRequest');
+        fakeDelete.withArgs('/azure/ehub/subscription-id/kktest11-rg/kktest11-name')
+            .resolves('ok');
+        // Expected Alert Logic parameters
+        process.env.WEBSITE_HOSTNAME = 'app-name';
+        process.env.CUSTOMCONNSTR_APP_AL_ACCESS_KEY_ID = mock.AL_KEY_ID;
+        process.env.CUSTOMCONNSTR_APP_AL_SECRET_KEY = mock.AL_SECRET;
+        process.env.CUSTOMCONNSTR_APP_AL_API_ENDPOINT = mock.AL_API_ENDPOINT;
+        process.env.CUSTOMCONNSTR_APP_AL_RESIDENCY = 'default';
+        process.env.APP_INGEST_ENDPOINT = 'existing-ingest-endpoint';
+        process.env.APP_AZCOLLECT_ENDPOINT = 'existing-azcollect-endpoint';
+        process.env.COLLECTOR_HOST_ID = 'existing-host-id';
+        process.env.COLLECTOR_SOURCE_ID = 'existing-source-id';
+        
+        // Expected Azure parameters
+        process.env.WEBSITE_SITE_NAME = 'kktest11-name';
+        process.env.APP_SUBSCRIPTION_ID = 'subscription-id';
+        process.env.APP_RESOURCE_GROUP = 'kktest11-rg';
+        process.env.APP_TENANT_ID = 'tenant-id';
+        process.env.CUSTOMCONNSTR_APP_CLIENT_ID = 'client-id';
+        process.env.CUSTOMCONNSTR_APP_CLIENT_SECRET = 'client-secret';
+        process.env.AzureWebJobsStorage = 'DefaultEndpointsProtocol=https;AccountName=testappo365;AccountKey=S0meKey+';
+        
+        var master = new AlAzureMaster(mock.DEFAULT_FUNCTION_CONTEXT, 'ehub', '1.0.0');
+        
+        master.deregister({}, function(err){
+            if (err) console.log(err);
+            fakeDelete.restore();
+            const expectedUrl = '/azure/ehub/subscription-id/kktest11-rg/kktest11-name';
+            assert.equal(null, err);
+            sinon.assert.calledWith(fakeDelete, expectedUrl);
             done();
         });
     });

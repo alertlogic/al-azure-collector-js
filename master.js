@@ -88,15 +88,16 @@ class AlAzureMaster {
             secret_key: alSecret
         };
         this._apiEndpoint = alApiEndpoint ? alApiEndpoint : process.env.CUSTOMCONNSTR_APP_AL_API_ENDPOINT;
+        this._alAzcollectEndpoint = alAzcollectEndpoint ? alAzcollectEndpoint : process.env.APP_AZCOLLECT_ENDPOINT;
         this._aimsc = new alcollector.AimsC(this._apiEndpoint, creds, undefined, MASTER_RETRY_OPTS);
         this._endpointsc = new alcollector.EndpointsC(this._apiEndpoint, this._aimsc, MASTER_RETRY_OPTS);
-        this._azcollectc = process.env.APP_AZCOLLECT_ENDPOINT ? 
+        this._azcollectc = this._alAzcollectEndpoint ? 
                 new alcollector.AzcollectC(
-                        process.env.APP_AZCOLLECT_ENDPOINT,
-                        this._aimsc,
-                        this._collectorType,
-                        false,
-                        MASTER_RETRY_OPTS) :
+                    this._alAzcollectEndpoint,
+                    this._aimsc,
+                    this._collectorType,
+                    false,
+                    MASTER_RETRY_OPTS) :
                 undefined;
         this._alDataResidency = alDataResidency ? alDataResidency : process.env.CUSTOMCONNSTR_APP_AL_RESIDENCY;
         
@@ -124,12 +125,20 @@ class AlAzureMaster {
         this._appStats = new AzureWebAppStats(collectorAzureFuns);
     }
     
-    getAzureCreds(){
+    getApplicationTokenCredentials(){
         return this._azureCreds;
     }
     
-    getAazureWebsiteClient(){
+    getAzureWebsiteClient(){
         return this._azureWebsiteClient;
+    }
+    
+    resetAzcollectc(endpoint) {
+        return this._azcollectc = new alcollector.AzcollectC(
+                endpoint, 
+                this._aimsc, 
+                this._collectorType, 
+                false, MASTER_RETRY_OPTS);
     }
     
     updateAppSettings(newSettings, callback) {
@@ -212,11 +221,7 @@ class AlAzureMaster {
                             if (settingsError) {
                                 return callback(settingsError);
                             } else {
-                                master._azcollectc = new alcollector.AzcollectC(
-                                        endpoints.APP_AZCOLLECT_ENDPOINT, 
-                                        master._aimsc, 
-                                        master._collectorType, 
-                                        false, MASTER_RETRY_OPTS);
+                                master.resetAzcollectc(endpoints.APP_AZCOLLECT_ENDPOINT);
                                 return callback(null);
                             }
                         });
@@ -383,7 +388,7 @@ class AlAzureMaster {
     /**
      *  @function deregister - deregisters a collector from Alert Logic services.
      *  
-     *  @param {Object} deregisterOpts - optional deregistration parameters specific for a certain collector type.
+     *  @param {Object} deregisterOpts - deregistration parameters specific for a certain collector type. Default is {}
      *  @param {} callback
      *  
      *  @return callback - (error)
@@ -393,7 +398,7 @@ class AlAzureMaster {
             this.getConfigAttrs(),
             this.getCollectorIds(),
             deregisterOpts);
-        this._azcollectc.register(deregBody)
+        this._azcollectc.deregister(deregBody)
             .then(resp => {
                 return callback(null, resp);
             })
