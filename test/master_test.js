@@ -75,7 +75,7 @@ describe('Master tests', function() {
         
         // Mock Alert Logic HTTP calls
         fakePost = sinon.stub(alcollector.AlServiceC.prototype, 'post');
-        fakePost.withArgs('/azure/ehub/subscription-id/kktest11/kktest11')
+        fakePost.withArgs('/azure/ehub/subscription-id/kktest11-rg/kktest11-name')
             .resolves({
                 source: {
                     host: {
@@ -106,9 +106,9 @@ describe('Master tests', function() {
         delete process.env.COLLECTOR_SOURCE_ID;
         
         // Expected Azure parameters
-        process.env.WEBSITE_SITE_NAME = 'kktest11';
+        process.env.WEBSITE_SITE_NAME = 'kktest11-name';
         process.env.APP_SUBSCRIPTION_ID = 'subscription-id';
-        process.env.APP_RESOURCE_GROUP = 'kktest11';
+        process.env.APP_RESOURCE_GROUP = 'kktest11-rg';
         process.env.APP_TENANT_ID = 'tenant-id';
         process.env.CUSTOMCONNSTR_APP_CLIENT_ID = 'client-id';
         process.env.CUSTOMCONNSTR_APP_CLIENT_SECRET = 'client-secret';
@@ -201,9 +201,9 @@ describe('Master tests', function() {
         process.env.COLLECTOR_SOURCE_ID = 'existing-source-id';
         
         // Expected Azure parameters
-        process.env.WEBSITE_SITE_NAME = 'kktest11';
+        process.env.WEBSITE_SITE_NAME = 'kktest11-name';
         process.env.APP_SUBSCRIPTION_ID = 'subscription-id';
-        process.env.APP_RESOURCE_GROUP = 'kktest11';
+        process.env.APP_RESOURCE_GROUP = 'kktest11-rg';
         process.env.APP_TENANT_ID = 'tenant-id';
         process.env.CUSTOMCONNSTR_APP_CLIENT_ID = 'client-id';
         process.env.CUSTOMCONNSTR_APP_CLIENT_SECRET = 'client-secret';
@@ -230,7 +230,7 @@ describe('Master tests', function() {
         .reply(200, mock.AZURE_TOKEN_MOCK);
         
         nock('https://management.azure.com:443', {'encodedQueryParams':true})
-        .get(/kktest11$/, /.*/ )
+        .get(/kktest11-name$/, /.*/ )
         .query(true)
         .times(2)
         .reply(200, mock.getAzureWebApp());
@@ -259,9 +259,9 @@ describe('Master tests', function() {
         process.env.COLLECTOR_SOURCE_ID = 'existing-source-id';
         
         // Expected Azure parameters
-        process.env.WEBSITE_SITE_NAME = 'kktest11';
+        process.env.WEBSITE_SITE_NAME = 'kktest11-name';
         process.env.APP_SUBSCRIPTION_ID = 'subscription-id';
-        process.env.APP_RESOURCE_GROUP = 'kktest11';
+        process.env.APP_RESOURCE_GROUP = 'kktest11-rg';
         process.env.APP_TENANT_ID = 'tenant-id';
         process.env.CUSTOMCONNSTR_APP_CLIENT_ID = 'client-id';
         process.env.CUSTOMCONNSTR_APP_CLIENT_SECRET = 'client-secret';
@@ -273,8 +273,8 @@ describe('Master tests', function() {
             const expectedCheckin = { 
                 body: {
                     version: '1.0.0',
-                    web_app_name: 'kktest11',
-                    app_resource_group: 'kktest11',
+                    web_app_name: 'kktest11-name',
+                    app_resource_group: 'kktest11-rg',
                     app_tenant_id: 'tenant-id',
                     subscription_id: 'subscription-id',
                     host_id: 'existing-host-id',
@@ -284,7 +284,7 @@ describe('Master tests', function() {
                     details: []
                 }
             };
-            const expectedUrl = '/azure/ehub/checkin/subscription-id/kktest11/kktest11';
+            const expectedUrl = '/azure/ehub/checkin/subscription-id/kktest11-rg/kktest11-name';
             fakeStats.restore();
             sinon.assert.calledWith(fakePost, expectedUrl, expectedCheckin);
             done();
