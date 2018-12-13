@@ -95,11 +95,11 @@ describe('App Stats tests', function() {
             function fakeFn(account, key, host) {
                 var mockObj = {
                     queryEntities : function(table, query, token, callback) {
-                        if (query == 'Master')
+                        if (query === 'Master')
                             return callback(null, mock.MASTER_INVOCATION_LOGS);
-                        if (query == 'Collector')
+                        if (query === 'Collector')
                             return callback(null, mock.COLLECTOR_INVOCATION_LOGS);
-                        if (query == 'Updater')
+                        if (query === 'Updater')
                             return callback(null, mock.UPDATER_INVOCATION_LOGS);
                         return callback(null, {entries : []});
                     }
@@ -136,12 +136,12 @@ describe('App Stats tests', function() {
             function fakeFn(account, key, host) {
                 var mockObj = {
                     queryEntities : function(table, query, token, callback) {
-                        if (query == 'Master')
+                        if (query === 'Master')
                             return callback(null, mock.MASTER_INVOCATION_LOGS);
-                        if (query == 'Collector')
+                        if (query === 'Collector')
                             return callback(null, mock.COLLECTOR_INVOCATION_LOGS);
-                        if (query == 'Updater') {
-                            if (token == 'cont-token') {
+                        if (query === 'Updater') {
+                            if (token === 'cont-token') {
                                 return callback(null, mock.UPDATER_INVOCATION_LOGS);
                             } else {
                                 return callback(null, mock.UPDATER_INVOCATION_LOGS_CONTD);
