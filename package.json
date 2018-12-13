@@ -5,7 +5,7 @@
   "repository": {},
   "private": true,
   "scripts": {
-    "lint": "jshint --exclude \"./node_modules/*\" **/*.js",
+    "lint": "jshint --show-non-errors --exclude \"./node_modules/*\" **/*.js",
     "test": "JUNIT_REPORT_PATH=./test/report.xml nyc --reporter=cobertura mocha --colors --reporter mocha-jenkins-reporter"
   },
   "devDependencies": {
@@ -20,7 +20,9 @@
   "dependencies": {
     "al-collector-js": "git://github.com/alertlogic/al-collector-js#master",
     "async": "*",
-    "azure": "^2.3.1-preview"
+    "azure": "^2.3.1-preview",
+    "parse-key-value": "^1.0.0",
+    "path": "^0.12.7"
   },
   "author": "Alert Logic Inc."
 }

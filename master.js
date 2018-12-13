@@ -9,7 +9,17 @@
  */
 'use strict';
 
+const async = require('async');
+
+const azureRest = require('ms-rest-azure');
+const azureArmClient = require('azure-arm-resource').ResourceManagementClient;
+const azureArmWebsite = require('azure-arm-website');
+const fileTokenCache = require('azure/lib/util/fileTokenCache');
+
 const alcollector = require('al-collector-js');
+
+const m_util = require('./util');
+const AzureWebAppStats = require('./appstats').AzureWebAppStats;
 
 const MASTER_RETRY_OPTS = {
     factor: 2,
@@ -17,6 +27,13 @@ const MASTER_RETRY_OPTS = {
     retries: 7,
     maxTimeout: 10000
 };
+
+const SERVICE_ENDPOINTS = [
+    'azcollect',
+    'ingest'
+];
+
+const DEFAULT_APP_FUNCTIONS = ['Master', 'Collector', 'Updater'];
 
 /**
  * @class
@@ -26,8 +43,9 @@ const MASTER_RETRY_OPTS = {
  * @param {Object} azureContext - context of Azure function.
  * @param {String} collectorType - collector type (ehub, o365, etc).
  * @param {String} version - version of collector.
- * @param {Array.<function>} healthCheckFuns - list of custom health check functions (can be just empty, so only common are applied). Deliberately not optional parameter.
- * @param {Array.<function>} statsFuns - list of custom stats functions (can be just empty, so only common are applied). Deliberately not optional parameter.
+ * @param {Array.<Function>} healthCheckFuns - (optional) list of custom health check functions (can be just empty, so only common are applied). Default is [].
+ * @param {Array.<Function>} statsFuns - (optional) list of custom stats functions (can be just empty, so only common are applied). Default is [].
+ * @param {Array.<String>} collectorAzureFuns - (optional) the list of Azure function names a collector Web application consists of. Default is ['Master', 'Collector', 'Updater'].
  * 
  * @param {Object} alOptional - optional Alert Logic service parameters.
  * @param {String} [alOptional.hostId] - (optional) Alert Logic collector host id. Default is process.env.COLLECTOR_HOST_ID
@@ -36,7 +54,8 @@ const MASTER_RETRY_OPTS = {
  * @param {String} [alOptional.aimsKeySecret] - (optional) Alert Logic API access key secret. Default is process.env.CUSTOMCONNSTR_APP_AL_SECRET_KEY
  * @param {String} [alOptional.alApiEndpoint] - (optional) Alert Logic API endpoint. Default is process.env.CUSTOMCONNSTR_APP_AL_API_ENDPOINT
  * @param {String} [alOptional.alAzcollectEndpoint] - (optional) Alert Logic Azcollect service endpoint. Default is process.env.APP_AZCOLLECT_ENDPOINT
- * @param {String} [alOptional.alDataResidency] - (optional) data residency inside Alert Logic. Default is process.env.CUSTOMCONNSTR_APP_AL_RESIDENCY
+ * @param {String} [alOptional.alDataResidency] - (optional) data residency inside Alert Logic3
+ * . Default is process.env.CUSTOMCONNSTR_APP_AL_RESIDENCY
  * 
  * @param {Object} azureOptional - optional Azure parameters.
  * @param {String} [azureOptional.clientId] - (optional) Application (client) ID. Default is process.env.CUSTOMCONNSTR_APP_CLIENT_ID
@@ -45,11 +64,14 @@ const MASTER_RETRY_OPTS = {
  * @param {String} [azureOptional.subscriptionId] - (optional) Azure subscription ID. Default is process.env.APP_SUBSCRIPTION_ID
  * @param {String} [azureOptional.resourceGroup] - (optional) Azure resource group where the function is deployed. Default is process.env.APP_RESOURCE_GROUP
  * @param {String} [azureOptional.webAppName] - (optional) Azure web application name Update is running for. Default is process.env.WEBSITE_SITE_NAME
+ * 
+ * @param {List} collectorAzureFuns - (optional) a list of Azure function names a collector consists of. Default is ['Master', 'Collector', 'Updater']
  */
 class AlAzureMaster {
     constructor(azureContext, collectorType, version, healthCheckFuns, statsFuns,
             {hostId, sourceId, aimsKeyId, aimsKeySecret, alApiEndpoint, alAzcollectEndpoint, alDataResidency} = {},
-            {clientId, domain, clientSecret, subscriptionId, resourceGroup, webAppName} = {}) {
+            {clientId, domain, clientSecret, subscriptionId, resourceGroup, webAppName} = {},
+            collectorAzureFuns = DEFAULT_APP_FUNCTIONS) {
         this._azureContext = azureContext;
         this._collectorType = collectorType;
         this._version = version;
@@ -65,8 +87,18 @@ class AlAzureMaster {
             access_key_id: alKeyId,
             secret_key: alSecret
         };
-        var apiEndpoint = alApiEndpoint ? alApiEndpoint : process.env.CUSTOMCONNSTR_APP_AL_API_ENDPOINT;
-        var aimsc = new alcollector.AimsC(apiEndpoint, creds, undefined, MASTER_RETRY_OPTS);
+        this._apiEndpoint = alApiEndpoint ? alApiEndpoint : process.env.CUSTOMCONNSTR_APP_AL_API_ENDPOINT;
+        this._alAzcollectEndpoint = alAzcollectEndpoint ? alAzcollectEndpoint : process.env.APP_AZCOLLECT_ENDPOINT;
+        this._aimsc = new alcollector.AimsC(this._apiEndpoint, creds, undefined, MASTER_RETRY_OPTS);
+        this._endpointsc = new alcollector.EndpointsC(this._apiEndpoint, this._aimsc, MASTER_RETRY_OPTS);
+        this._azcollectc = this._alAzcollectEndpoint ? 
+                new alcollector.AzcollectC(
+                    this._alAzcollectEndpoint,
+                    this._aimsc,
+                    this._collectorType,
+                    false,
+                    MASTER_RETRY_OPTS) :
+                undefined;
         this._alDataResidency = alDataResidency ? alDataResidency : process.env.CUSTOMCONNSTR_APP_AL_RESIDENCY;
         
         // Init Azure optional configuration parameters
@@ -76,22 +108,338 @@ class AlAzureMaster {
         this._subscriptionId = subscriptionId ? subscriptionId : process.env.APP_SUBSCRIPTION_ID;
         this._resourceGroup = resourceGroup ? resourceGroup : process.env.APP_RESOURCE_GROUP;
         this._webAppName = webAppName ? webAppName : process.env.WEBSITE_SITE_NAME;
+        
+        // Init Azure SDK
+        var tokenCache = new fileTokenCache(m_util.getADCacheFilename(
+            'https://management.azure.com',
+            this._clientId,
+            this._domain));
+
+        this._azureCreds = new azureRest.ApplicationTokenCredentials(
+            this._clientId,
+            this._domain,
+            this._clientSecret,
+            { 'tokenCache': tokenCache });
+                
+        this._azureWebsiteClient = new azureArmWebsite(this._azureCreds, this._subscriptionId);
+        this._appStats = new AzureWebAppStats(collectorAzureFuns);
     }
     
-    register(callback) {
-        return callback('not implemented');
+    getApplicationTokenCredentials(){
+        return this._azureCreds;
     }
     
-    deregister(callback) {
-        return callback('not implemented');
+    getAzureWebsiteClient(){
+        return this._azureWebsiteClient;
     }
     
-    checkin(callback) {
-        return callback('not implemented');
+    resetAzcollectc(endpoint) {
+        return this._azcollectc = new alcollector.AzcollectC(
+                endpoint, 
+                this._aimsc, 
+                this._collectorType, 
+                false, MASTER_RETRY_OPTS);
     }
     
-    updateAlEndpoints(callback) {
-        return callback('not implemented');
+    updateAppSettings(newSettings, callback) {
+        var master = this;
+        async.waterfall([
+            function(callback) {
+                return master.getAppSettings(callback);
+            },
+            function(appSettings, callback) {
+                var updatedProps = Object.assign({}, appSettings.properties, newSettings);
+                var updatedEnv = Object.assign({}, process.env, newSettings);
+                process.env = updatedEnv;
+                appSettings.properties = updatedProps;
+                return master.setAppSettings(appSettings, callback);
+            }],
+            callback
+        );
+    };
+
+    getAppSettings(callback) {
+        return this._azureWebsiteClient.webApps.listApplicationSettings(
+            this._resourceGroup, this._webAppName, null,
+            function(err, result, request, response) {
+                if (err) {
+                    return callback(err);
+                } else {
+                    return callback(null, result);
+                }
+            });
+    };
+
+    setAppSettings(settings, callback) {
+        return this._azureWebsiteClient.webApps.updateApplicationSettings(
+            this._resourceGroup, this._webAppName, settings, null,
+            function(err, result, request, response) {
+                if (err) {
+                    return callback(err);
+                } else {
+                    return callback(null);
+                }
+            });
+    };
+    
+    /**
+     *  @function updateAlEndpoints - retrieves Alert Logic service endpoints.
+     *  
+     *  @param {Boolean} force - force Alert Logic service endpoints update overwriting existing ones stored in application settings
+     *  @param {Function} callback
+     *  
+     *  @return {Function} callback - (error)
+     */
+    updateAlEndpoints(force, callback) {
+        var master = this;
+        if (!force && process.env.APP_INGEST_ENDPOINT && process.env.APP_AZCOLLECT_ENDPOINT) {
+            master._azureContext.log.verbose('Reuse Ingest endpoint', process.env.APP_INGEST_ENDPOINT);
+            master._azureContext.log.verbose('Reuse Azcollect endpoint', process.env.APP_AZCOLLECT_ENDPOINT);
+            return callback(null);
+        } else {
+            master._azureContext.log.verbose('Updating endpoints for', SERVICE_ENDPOINTS);
+            async.map(SERVICE_ENDPOINTS, 
+                function(service, callback){
+                    master._endpointsc.getEndpoint(service, master._alDataResidency)
+                        .then(resp => {
+                            return callback(null, resp);
+                        })
+                        .catch(function(exception) {
+                            return callback(`Endpoints update failure ${exception}`);
+                        });
+                },
+                function (mapErr, mapsResult) {
+                    if (mapErr) {
+                        return callback(mapErr);
+                    } else {
+                        master._azureContext.log.verbose('New endpoints:', mapsResult);
+                        var endpoints = {
+                            APP_AZCOLLECT_ENDPOINT : mapsResult[0].azcollect,
+                            APP_INGEST_ENDPOINT : mapsResult[1].ingest
+                        };
+                        master.updateAppSettings(endpoints, function(settingsError) {
+                            if (settingsError) {
+                                return callback(settingsError);
+                            } else {
+                                master.resetAzcollectc(endpoints.APP_AZCOLLECT_ENDPOINT);
+                                return callback(null);
+                            }
+                        });
+                    }
+            });
+        }
+    }
+    
+    getConfigAttrs() {
+        return {
+            version: this._version,
+            web_app_name: this._webAppName,
+            app_resource_group: this._resourceGroup,
+            app_tenant_id: this._domain,
+            subscription_id: this._subscriptionId
+        };
+    }
+    
+    getAzureCreds() {
+        return {
+            client_id: this._clientId,
+            client_secret: this._clientSecret
+        };
+    }
+    
+    getCollectorIds() {
+        return {
+            host_id: this._hostId,
+            source_id: this._sourceId
+        };
+    }
+    
+    _errorStatusFmt(code, message) {
+       return {
+           status: 'error',
+           error_code: code,
+           details: [message]
+       };
+   }
+    
+    _getAppStatus(callback) {
+        var master = this;
+        this._azureWebsiteClient.webApps.get(
+            this._resourceGroup,
+            this._webAppName,
+            function(err, status) {
+            if (err) {
+                return callback(err);
+            } else {
+                const expectedProps = {
+                    availabilityState: 'Normal',
+                    state: 'Running',
+                    usageState: 'Normal',
+                    enabled: true
+                };
+                
+                var propDiff = m_util.verifyObjProps(status, expectedProps);
+                
+                if (!propDiff) {
+                    return callback(null);
+                } else {
+                    return callback(master._errorStatusFmt(
+                        'ALAZU00001',
+                        `Azure Web Application status is not OK. ${JSON.stringify(propDiff)}`));
+                }
+            }
+        });
+    }
+    
+    getStats(timestamp, callback) {
+        return this._appStats.getAppStats(timestamp, callback);
+    }
+    
+    getHealthStatus(callback) {
+        var master = this;
+        async.parallel([
+            function(callback) {
+                master._getAppStatus(callback);
+            }
+        ].concat(master._customHealthChecks),
+        function(errStatus) {
+            var status;
+            if (errStatus) {
+                master._azureContext.log.warn('Health check failed with',  errStatus);
+                status = errStatus;
+            } else {
+                status = {
+                    status: 'ok',
+                    details: []
+                };
+            }
+            return callback(null, status);
+        });
+    }
+
+    /**
+     *  @function register - registers new collector in Alert Logic.
+     *  
+     *  @param {Object} registerOpts - optional registration parameters specific for a certain collector type.
+     *  @param {Function} callback
+     *  
+     *  @return {Function} callback - (error, collectorHostId, collectorSourceId)
+     */
+    register(registerOpts = {}, callback) {
+        var master = this;
+        async.waterfall([
+            // Update Alert Logic service endpoints, if necessary
+            function(callback) {
+                return master.updateAlEndpoints(false, callback);
+            },
+            // Register a collector with Alert Logic backed, if necessary
+            function(callback) {
+                var hostId = master._hostId;
+                var sourceId = master._sourceId;
+                if (hostId && sourceId) {
+                    master._azureContext.log.verbose('Reuse collector IDs: ', hostId, sourceId);
+                    return callback(null, false, hostId, sourceId);
+                } else {
+                    master._azureContext.log.verbose('Registering the collector: ',
+                            master._webAppName,
+                            master._collectorType,
+                            master._version);
+                    
+                    var regBody = Object.assign(
+                            master.getConfigAttrs(),
+                            master.getAzureCreds,
+                            registerOpts);
+                    master._azcollectc.register(regBody)
+                        .then(resp => {
+                            var newHostId = resp.source.host.id;
+                            var newSourceId = resp.source.id;
+                            return callback(null, true, newHostId, newSourceId);
+                        })
+                        .catch(err => {
+                            return callback(err);
+                        });
+                }
+            },
+            // Update Azure application settings with collector registration values if needed
+            function(updateSettings, hostId, sourceId, callback) {
+                if (updateSettings) {
+                    var newSettings = {
+                        COLLECTOR_HOST_ID: hostId,
+                        COLLECTOR_SOURCE_ID: sourceId
+                    };
+                    master.updateAppSettings(newSettings, 
+                        function(settingsError) {
+                            if (settingsError) {
+                                return callback(settingsError);
+                            } else {
+                                master._azureContext.log.verbose('New collector IDs: ', hostId, sourceId);
+                                master._hostId = hostId;
+                                master._sourceId = sourceId;
+                                return callback(null, hostId, sourceId);
+                            }
+                        });
+                } else {
+                    return callback(null, hostId, sourceId);
+                }
+            }
+        ], callback);
+    }
+    
+    /**
+     *  @function deregister - deregisters a collector from Alert Logic services.
+     *  
+     *  @param {Object} deregisterOpts - deregistration parameters specific for a certain collector type. Default is {}
+     *  @param {} callback
+     *  
+     *  @return callback - (error)
+     */
+    deregister(deregisterOpts = {}, callback) {
+        const deregBody = Object.assign(
+            this.getConfigAttrs(),
+            this.getCollectorIds(),
+            deregisterOpts);
+        this._azcollectc.deregister(deregBody)
+            .then(resp => {
+                return callback(null, resp);
+            })
+            .catch(err => {
+                return callback(err);
+            });
+    }
+    
+    /**
+     *  @function checkin - report a collector health check into Alert Logic services.
+     *  
+     *  @param {String} timestamp - f or example, '2017-12-22T14:31:39'. Usually Master function timer trigger value is used.
+     *  @param callback
+     *  
+     *  @return callback - (error)
+     */
+    checkin(timestamp, callback) {
+        var master = this;
+
+        async.parallel([
+            function(callback) {
+                master.getHealthStatus(callback);
+            },
+            function(callback) {
+                master.getStats(timestamp, callback);
+            }
+        ],
+        function(err, checkinParts) {
+            const checkinBody = Object.assign(
+                master.getConfigAttrs(),
+                master.getCollectorIds(),
+                checkinParts[0],
+                checkinParts[1]);
+            master._azcollectc.checkin(checkinBody)
+                .then(resp => {
+                    return callback(null);
+                })
+                .catch(err => {
+                    return callback(err);
+                });
+        });
     }
 };
 module.exports = {
