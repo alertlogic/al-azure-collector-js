@@ -239,12 +239,12 @@ describe('Master tests', function() {
         fakePost = sinon.stub(alcollector.AlServiceC.prototype, 'post').callsFake(
             function fakeFn(path, extraOptions) {
                 return new Promise(function(resolve, reject){
-                    return resolve('ok');
+                    return resolve(mock.CHECKIN_RESPONSE_OK);
                 });
             });
         var fakeStats = sinon.stub(AzureWebAppStats.prototype, 'getAppStats').callsFake(
             function fakeFn(path, callback) {
-                return callback(null, mock.FAKE_INVOCATION_STATS);
+                return callback(null, mock.INVOCATION_STATS);
         });
         
         // Expected Alert Logic parameters
@@ -268,7 +268,7 @@ describe('Master tests', function() {
         process.env.AzureWebJobsStorage = 'DefaultEndpointsProtocol=https;AccountName=testappo365;AccountKey=S0meKey+';
         
         var master = new AlAzureMaster(mock.DEFAULT_FUNCTION_CONTEXT, 'ehub', '1.0.0');
-        master.checkin('2017-12-22T14:31:39', function(err){
+        master.checkin('2017-12-22T14:31:39', function(err, resp){
             if (err) console.log(err);
             const expectedCheckin = { 
                 body: {
@@ -287,6 +287,7 @@ describe('Master tests', function() {
             const expectedUrl = '/azure/ehub/checkin/subscription-id/kktest11-rg/kktest11-name';
             fakeStats.restore();
             sinon.assert.calledWith(fakePost, expectedUrl, expectedCheckin);
+            assert.equal(resp, mock.CHECKIN_RESPONSE_OK);
             done();
         });
     });
@@ -314,7 +315,7 @@ describe('Master tests', function() {
             });
         var fakeStats = sinon.stub(AzureWebAppStats.prototype, 'getAppStats').callsFake(
             function fakeFn(path, callback) {
-                return callback(null, mock.FAKE_INVOCATION_STATS);
+                return callback(null, mock.INVOCATION_STATS);
         });
         // Expected Alert Logic parameters
         process.env.WEBSITE_HOSTNAME = 'app-name';

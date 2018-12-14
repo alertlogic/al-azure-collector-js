@@ -145,7 +145,7 @@ function getAzureWebApp(availabilityState = 'Normal') {
     };
 }
 
-const FAKE_INVOCATION_STATS = {
+const INVOCATION_STATS = {
     statistics: [
         {'Master':
             {'invocations':2,'errors':0}
@@ -157,6 +157,13 @@ const FAKE_INVOCATION_STATS = {
             {'invocations':0,'errors':0}
         }
     ]
+};
+
+const CHECKIN_RESPONSE_OK = {
+    id: 'checkin-source-id',
+    host: {
+        id: 'checkin-host-id'
+    }
 };
 
 const DEFAULT_FUNCTION_CONTEXT = {
@@ -341,11 +348,12 @@ module.exports = {
     INGEST_API_ENDPOINT: INGEST_API_ENDPOINT,
     AZCOLLECT_API_ENDPOINT: AZCOLLECT_API_ENDPOINT,
     DEFAULT_FUNCTION_CONTEXT: DEFAULT_FUNCTION_CONTEXT,
-    FAKE_INVOCATION_STATS: FAKE_INVOCATION_STATS,
+    INVOCATION_STATS: INVOCATION_STATS,
     COLLECTOR_INVOCATION_LOGS: COLLECTOR_INVOCATION_LOGS,
     MASTER_INVOCATION_LOGS: MASTER_INVOCATION_LOGS,
     UPDATER_INVOCATION_LOGS: UPDATER_INVOCATION_LOGS,
     UPDATER_INVOCATION_LOGS_CONTD: UPDATER_INVOCATION_LOGS_CONTD,
+    CHECKIN_RESPONSE_OK: CHECKIN_RESPONSE_OK,
     getAzureWebApp: getAzureWebApp,
     getAuthResp: getAuthResp
 };
