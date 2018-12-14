@@ -410,7 +410,7 @@ class AlAzureMaster {
     /**
      *  @function checkin - report a collector health check into Alert Logic services.
      *  
-     *  @param {String} timestamp - f or example, '2017-12-22T14:31:39'. Usually Master function timer trigger value is used.
+     *  @param {String} timestamp - for example, '2017-12-22T14:31:39'. Usually Master function timer trigger value is used.
      *  @param callback
      *  
      *  @return callback - (error)
@@ -434,7 +434,7 @@ class AlAzureMaster {
                 checkinParts[1]);
             master._azcollectc.checkin(checkinBody)
                 .then(resp => {
-                    return callback(null);
+                    return callback(null, resp);
                 })
                 .catch(err => {
                     return callback(err);
