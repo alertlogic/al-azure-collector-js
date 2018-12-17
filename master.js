@@ -89,7 +89,7 @@ class AlAzureMaster {
         };
         this._apiEndpoint = alApiEndpoint ? alApiEndpoint : process.env.CUSTOMCONNSTR_APP_AL_API_ENDPOINT;
         this._alAzcollectEndpoint = alAzcollectEndpoint ? alAzcollectEndpoint : process.env.APP_AZCOLLECT_ENDPOINT;
-        this._aimsc = new alcollector.AimsC(this._apiEndpoint, creds, undefined, MASTER_RETRY_OPTS);
+        this._aimsc = new alcollector.AimsC(this._apiEndpoint, creds, process.env.TMP, MASTER_RETRY_OPTS);
         this._endpointsc = new alcollector.EndpointsC(this._apiEndpoint, this._aimsc, MASTER_RETRY_OPTS);
         this._azcollectc = this._alAzcollectEndpoint ? 
                 new alcollector.AzcollectC(
@@ -417,7 +417,6 @@ class AlAzureMaster {
      */
     checkin(timestamp, callback) {
         var master = this;
-
         async.parallel([
             function(callback) {
                 master.getHealthStatus(callback);
@@ -442,6 +441,7 @@ class AlAzureMaster {
         });
     }
 };
+
 module.exports = {
     AlAzureMaster: AlAzureMaster
 };
