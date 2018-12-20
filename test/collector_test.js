@@ -131,6 +131,46 @@ describe('Collector tests', function() {
             done();
         });
     });
+    
+    it('Verify empty messages input', function(done) {
+        
+        var noPost = sinon.stub(alcollector.AlServiceC.prototype, 'post').callsFake(
+            function fakeFn(path, extraOptions) {
+                return new Promise(function(resolve, reject){
+                    return resolve('ok');
+                });
+            });
+
+        process.env.WEBSITE_HOSTNAME = 'app-name';
+        process.env.COLLECTOR_HOST_ID = 'host-id';
+        process.env.COLLECTOR_SOURCE_ID = 'source-id';
+        process.env.CUSTOMCONNSTR_APP_AL_ACCESS_KEY_ID = mock.AL_KEY_ID;
+        process.env.CUSTOMCONNSTR_APP_AL_SECRET_KEY = mock.AL_SECRET;
+        process.env.CUSTOMCONNSTR_APP_AL_API_ENDPOINT = mock.AL_API_ENDPOINT;
+        process.env.CUSTOMCONNSTR_APP_AL_RESIDENCY = 'default';
+        process.env.APP_INGEST_ENDPOINT = mock.INGEST_API_ENDPOINT;
+        var collector = new AlAzureCollector(mock.DEFAULT_FUNCTION_CONTEXT, 'ehub', '1.0.0');
+        var formatFun = function(msg) {
+            sinon.assert.match(msg, 'msg');
+            return {
+                messageTs: 1542138053,
+                priority: 11,
+                progName: 'o365webhook',
+                pid: undefined,
+                message: msg,
+                messageType: 'json/azure.o365',
+                messageTypeId: 'AzureActiveDirectory',
+                messageTsUs: undefined
+            };
+        };
+        collector.processLog([], formatFun, function(err, resp){
+            noPost.restore();
+            assert.equal(err, null);
+            assert.deepEqual(resp, {});
+            sinon.assert.notCalled(noPost);
+            done();
+        });
+    });
 });
 
 
