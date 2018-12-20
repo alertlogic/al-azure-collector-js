@@ -53,7 +53,7 @@ class AlAzureCollector {
             secret_key: alSecret
         };
         var apiEndpoint = alApiEndpoint ? alApiEndpoint : process.env.CUSTOMCONNSTR_APP_AL_API_ENDPOINT;
-        var aimsc = new alcollector.AimsC(apiEndpoint, creds, undefined, COLLECTOR_RETRY_OPTS);
+        var aimsc = new alcollector.AimsC(apiEndpoint, creds, process.env.TMP, COLLECTOR_RETRY_OPTS);
         var ingestEndpoint = alIngestEndpoint ? alIngestEndpoint : process.env.APP_INGEST_ENDPOINT;
         this._ingestc = new alcollector.IngestC(ingestEndpoint, aimsc, 'azure_function', COLLECTOR_RETRY_OPTS);
         this._alDataResidency = alDataResidency ? alDataResidency : process.env.CUSTOMCONNSTR_APP_AL_RESIDENCY;
@@ -72,6 +72,16 @@ class AlAzureCollector {
         ];
     }
     
+    /**
+     *  @function processLog - formats and send log messages to Alert Logic Ingestion service.
+     *  
+     *  @param {Array.<Object>} messages - the list of JSON objects to be processed as Log data type.
+     *  @param {Function} formatFun - message object formatting function. Refer to al-collector-js/al_log.js:buildPayload(parseCallback)
+     *  @param {Function} hostmetaElems - (optional) additional host metadata elements. Refer to al-collector-js/al_log.js:buildPayload(hostmetaElems)
+     *  @param {Function} callback
+     *  
+     *  @return {Function} callback - (error, response)
+     */
     processLog(messages, formatFun, hostmetaElems, callback) {
         var args = Array.from(arguments);
         var callback = args.pop();
@@ -86,19 +96,23 @@ class AlAzureCollector {
         var hm = hostmetaElems ? hostmetaElems : this._defaultHostmetaElems();
         var ingestc = this._ingestc;
         
-        alcollector.AlLog.buildPayload(this._hostId, this._sourceId, hm, messages, formatFun, function(err, payload){
-            if (err) {
-                return callback(err);
-            } else {
-                ingestc.sendAicspmsgs(payload)
-                    .then( resp => {
-                        return callback(null, resp);
-                    })
-                    .catch( err => {
-                        return callback(err);
-                    });
-            }
-        });
+        if (messages && messages.length > 0) {
+            alcollector.AlLog.buildPayload(this._hostId, this._sourceId, hm, messages, formatFun, function(err, payload){
+                if (err) {
+                    return callback(err);
+                } else {
+                    ingestc.sendAicspmsgs(payload)
+                        .then( resp => {
+                            return callback(null, resp);
+                        })
+                        .catch( err => {
+                            return callback(err);
+                        });
+                }
+            });
+        } else {
+            return callback(null, {});
+        }
         
     }
     
