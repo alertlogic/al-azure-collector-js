@@ -347,7 +347,7 @@ class AlAzureMaster {
                     
                     var regBody = Object.assign(
                             master.getConfigAttrs(),
-                            master.getAzureCreds,
+                            master.getAzureCreds(),
                             registerOpts);
                     master._azcollectc.register(regBody)
                         .then(resp => {

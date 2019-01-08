@@ -122,6 +122,15 @@ describe('Master tests', function() {
             assert.equal(process.env.APP_AZCOLLECT_ENDPOINT, 'new-azcollect-endpoint');
             assert.equal(collectorHostId, 'new-host-id');
             assert.equal(collectorSourceId, 'new-source-id');
+            const expectedRegisterBody = {
+                body: {
+                    app_tenant_id: "tenant-id",
+                    client_id: "client-id",
+                    client_secret: "client-secret",
+                    version: "1.0.0"
+                }
+            };
+            sinon.assert.calledWith(fakePost, '/azure/ehub/subscription-id/kktest11-rg/kktest11-name', expectedRegisterBody);
             done();
         });
     });
@@ -273,10 +282,7 @@ describe('Master tests', function() {
             const expectedCheckin = { 
                 body: {
                     version: '1.0.0',
-                    web_app_name: 'kktest11-name',
-                    app_resource_group: 'kktest11-rg',
                     app_tenant_id: 'tenant-id',
-                    subscription_id: 'subscription-id',
                     host_id: 'existing-host-id',
                     source_id: 'existing-source-id',
                     statistics: [{ 'Master': { 'errors': 0, 'invocations': 2 } }, { 'Collector': { 'errors': 1, 'invocations': 10 } }, { 'Updater': { 'errors': 0, 'invocations': 0 } }],
@@ -343,10 +349,7 @@ describe('Master tests', function() {
             const expectedCheckin = { 
                 body: {
                     version: '1.0.0',
-                    web_app_name: 'kktest11-name',
-                    app_resource_group: 'kktest11-rg',
                     app_tenant_id: 'tenant-id',
-                    subscription_id: 'subscription-id',
                     host_id: 'existing-host-id',
                     source_id: 'existing-source-id',
                     statistics: [{ 'Master': { 'errors': 0, 'invocations': 2 } }, { 'Collector': { 'errors': 1, 'invocations': 10 } }, { 'Updater': { 'errors': 0, 'invocations': 0 } }],
