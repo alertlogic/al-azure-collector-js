@@ -44,6 +44,9 @@ const DEFAULT_APP_FUNCTIONS = ['Master', 'Collector', 'Updater'];
  * @param {String} collectorType - collector type (ehub, o365, etc).
  * @param {String} version - version of collector.
  * @param {Array.<Function>} healthCheckFuns - (optional) list of custom health check functions (can be just empty, so only common are applied). Default is [].
+ * In case of health-check succeeds a custom health check function should call callback(null), otherwise return an error object constructed with a help of.
+ * errorStatusFmt() function. For example, master.errorStatusFmt('ALAZU00001', 'Some error description');
+ * 
  * @param {Array.<Function>} statsFuns - (optional) list of custom stats functions (can be just empty, so only common are applied). Default is [].
  * @param {Array.<String>} collectorAzureFuns - (optional) the list of Azure function names a collector Web application consists of. Default is ['Master', 'Collector', 'Updater'].
  * 
@@ -54,8 +57,7 @@ const DEFAULT_APP_FUNCTIONS = ['Master', 'Collector', 'Updater'];
  * @param {String} [alOptional.aimsKeySecret] - (optional) Alert Logic API access key secret. Default is process.env.CUSTOMCONNSTR_APP_AL_SECRET_KEY
  * @param {String} [alOptional.alApiEndpoint] - (optional) Alert Logic API endpoint. Default is process.env.CUSTOMCONNSTR_APP_AL_API_ENDPOINT
  * @param {String} [alOptional.alAzcollectEndpoint] - (optional) Alert Logic Azcollect service endpoint. Default is process.env.APP_AZCOLLECT_ENDPOINT
- * @param {String} [alOptional.alDataResidency] - (optional) data residency inside Alert Logic3
- * . Default is process.env.CUSTOMCONNSTR_APP_AL_RESIDENCY
+ * @param {String} [alOptional.alDataResidency] - (optional) data residency inside Alert Logic. Default is process.env.CUSTOMCONNSTR_APP_AL_RESIDENCY
  * 
  * @param {Object} azureOptional - optional Azure parameters.
  * @param {String} [azureOptional.clientId] - (optional) Application (client) ID. Default is process.env.CUSTOMCONNSTR_APP_CLIENT_ID
@@ -254,7 +256,7 @@ class AlAzureMaster {
         };
     }
     
-    _errorStatusFmt(code, message) {
+    errorStatusFmt(code, message) {
        return {
            status: 'error',
            error_code: code,
@@ -283,10 +285,20 @@ class AlAzureMaster {
                 if (!propDiff) {
                     return callback(null);
                 } else {
-                    return callback(master._errorStatusFmt(
+                    return callback(master.errorStatusFmt(
                         'ALAZU00001',
-                        `Azure Web Application status is not OK. ${JSON.stringify(propDiff)}`));
+                        `Azure Web Application status is not OK. ${JSON.stringify(propDiff)}`
+                    ));
                 }
+            }
+        });
+    }
+    
+    _getCustomHealthChecks() {
+        var master = this;
+        return master._customHealthChecks.map(function(check){
+            return function(callback) {
+                check(master, callback)
             }
         });
     }
@@ -297,15 +309,16 @@ class AlAzureMaster {
     
     getHealthStatus(callback) {
         var master = this;
+        
         async.parallel([
             function(callback) {
                 master._getAppStatus(callback);
             }
-        ].concat(master._customHealthChecks),
+        ].concat(master._getCustomHealthChecks()),
         function(errStatus) {
             var status;
             if (errStatus) {
-                master._azureContext.log.warn('Health check failed with',  errStatus);
+                master._azureContext.log.warn('Health check failed with',  errStatus.details);
                 status = errStatus;
             } else {
                 status = {

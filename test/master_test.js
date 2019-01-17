@@ -355,7 +355,7 @@ describe('Master tests', function() {
                     statistics: [{ 'Master': { 'errors': 0, 'invocations': 2 } }, { 'Collector': { 'errors': 1, 'invocations': 10 } }, { 'Updater': { 'errors': 0, 'invocations': 0 } }],
                     status: 'error',
                     details: ['Azure Web Application status is not OK. {\"availabilityState\":\"Limited\"}'],
-                    error_code: "ALAZU00001"
+                    error_code: 'ALAZU00001'
                 }
             };
             const expectedUrl = '/azure/ehub/checkin/subscription-id/kktest11-rg/kktest11-name';
@@ -402,6 +402,143 @@ describe('Master tests', function() {
         });
     });
 
+    it('Verify checkin with custom health-check ok', function(done) {
+        // Mock Azure HTTP calls
+        nock('https://login.microsoftonline.com:443', {'encodedQueryParams':true})
+        .post(/token$/, /.*/ )
+        .query(true)
+        .times(5)
+        .reply(200, mock.AZURE_TOKEN_MOCK);
+        
+        nock('https://management.azure.com:443', {'encodedQueryParams':true})
+        .get(/kktest11-name$/, /.*/ )
+        .query(true)
+        .times(2)
+        .reply(200, mock.getAzureWebApp());
+        
+        // Mock Alert Logic HTTP calls
+        fakePost = sinon.stub(alcollector.AlServiceC.prototype, 'post').callsFake(
+            function fakeFn(path, extraOptions) {
+                return new Promise(function(resolve, reject){
+                    return resolve('ok');
+                });
+            });
+        var fakeStats = sinon.stub(AzureWebAppStats.prototype, 'getAppStats').callsFake(
+            function fakeFn(path, callback) {
+                return callback(null, mock.INVOCATION_STATS);
+        });
+        // Expected Alert Logic parameters
+        process.env.WEBSITE_HOSTNAME = 'app-name';
+        process.env.CUSTOMCONNSTR_APP_AL_ACCESS_KEY_ID = mock.AL_KEY_ID;
+        process.env.CUSTOMCONNSTR_APP_AL_SECRET_KEY = mock.AL_SECRET;
+        process.env.CUSTOMCONNSTR_APP_AL_API_ENDPOINT = mock.AL_API_ENDPOINT;
+        process.env.CUSTOMCONNSTR_APP_AL_RESIDENCY = 'default';
+        process.env.APP_INGEST_ENDPOINT = 'existing-ingest-endpoint';
+        process.env.APP_AZCOLLECT_ENDPOINT = 'existing-azcollect-endpoint';
+        process.env.COLLECTOR_HOST_ID = 'existing-host-id';
+        process.env.COLLECTOR_SOURCE_ID = 'existing-source-id';
+        
+        // Expected Azure parameters
+        process.env.WEBSITE_SITE_NAME = 'kktest11-name';
+        process.env.APP_SUBSCRIPTION_ID = 'subscription-id';
+        process.env.APP_RESOURCE_GROUP = 'kktest11-rg';
+        process.env.APP_TENANT_ID = 'tenant-id';
+        process.env.CUSTOMCONNSTR_APP_CLIENT_ID = 'client-id';
+        process.env.CUSTOMCONNSTR_APP_CLIENT_SECRET = 'client-secret';
+        process.env.AzureWebJobsStorage = 'DefaultEndpointsProtocol=https;AccountName=testappo365;AccountKey=S0meKey+';
+        var customHealthFun = function(m, callback) {
+            return callback(null);
+        };
+        var master = new AlAzureMaster(mock.DEFAULT_FUNCTION_CONTEXT, 'ehub', '1.0.0', [customHealthFun]);
+        master.checkin('2017-12-22T14:31:39', function(err){
+            if (err) console.log(err);
+            const expectedCheckin = { 
+                body: {
+                    version: '1.0.0',
+                    app_tenant_id: 'tenant-id',
+                    host_id: 'existing-host-id',
+                    source_id: 'existing-source-id',
+                    statistics: [{ 'Master': { 'errors': 0, 'invocations': 2 } }, { 'Collector': { 'errors': 1, 'invocations': 10 } }, { 'Updater': { 'errors': 0, 'invocations': 0 } }],
+                    status: 'ok',
+                    details: []
+                }
+            };
+            const expectedUrl = '/azure/ehub/checkin/subscription-id/kktest11-rg/kktest11-name';
+            fakeStats.restore();
+            sinon.assert.calledWith(fakePost, expectedUrl, expectedCheckin);
+            done();
+        });
+    });
+    
+    it('Verify checkin with custom health-check error', function(done) {
+        // Mock Azure HTTP calls
+        nock('https://login.microsoftonline.com:443', {'encodedQueryParams':true})
+        .post(/token$/, /.*/ )
+        .query(true)
+        .times(5)
+        .reply(200, mock.AZURE_TOKEN_MOCK);
+        
+        nock('https://management.azure.com:443', {'encodedQueryParams':true})
+        .get(/kktest11-name$/, /.*/ )
+        .query(true)
+        .times(2)
+        .reply(200, mock.getAzureWebApp());
+        
+        // Mock Alert Logic HTTP calls
+        fakePost = sinon.stub(alcollector.AlServiceC.prototype, 'post').callsFake(
+            function fakeFn(path, extraOptions) {
+                return new Promise(function(resolve, reject){
+                    return resolve('ok');
+                });
+            });
+        var fakeStats = sinon.stub(AzureWebAppStats.prototype, 'getAppStats').callsFake(
+            function fakeFn(path, callback) {
+                return callback(null, mock.INVOCATION_STATS);
+        });
+        // Expected Alert Logic parameters
+        process.env.WEBSITE_HOSTNAME = 'app-name';
+        process.env.CUSTOMCONNSTR_APP_AL_ACCESS_KEY_ID = mock.AL_KEY_ID;
+        process.env.CUSTOMCONNSTR_APP_AL_SECRET_KEY = mock.AL_SECRET;
+        process.env.CUSTOMCONNSTR_APP_AL_API_ENDPOINT = mock.AL_API_ENDPOINT;
+        process.env.CUSTOMCONNSTR_APP_AL_RESIDENCY = 'default';
+        process.env.APP_INGEST_ENDPOINT = 'existing-ingest-endpoint';
+        process.env.APP_AZCOLLECT_ENDPOINT = 'existing-azcollect-endpoint';
+        process.env.COLLECTOR_HOST_ID = 'existing-host-id';
+        process.env.COLLECTOR_SOURCE_ID = 'existing-source-id';
+        
+        // Expected Azure parameters
+        process.env.WEBSITE_SITE_NAME = 'kktest11-name';
+        process.env.APP_SUBSCRIPTION_ID = 'subscription-id';
+        process.env.APP_RESOURCE_GROUP = 'kktest11-rg';
+        process.env.APP_TENANT_ID = 'tenant-id';
+        process.env.CUSTOMCONNSTR_APP_CLIENT_ID = 'client-id';
+        process.env.CUSTOMCONNSTR_APP_CLIENT_SECRET = 'client-secret';
+        process.env.AzureWebJobsStorage = 'DefaultEndpointsProtocol=https;AccountName=testappo365;AccountKey=S0meKey+';
+        var customHealthFun = function(m, callback) {
+            return callback(m.errorStatusFmt('ALAZU000004', 'Custom Error'));
+        };
+        var master = new AlAzureMaster(mock.DEFAULT_FUNCTION_CONTEXT, 'ehub', '1.0.0', [customHealthFun]);
+        master.checkin('2017-12-22T14:31:39', function(err){
+            if (err) console.log(err);
+            const expectedCheckin = { 
+                body: {
+                    version: '1.0.0',
+                    app_tenant_id: 'tenant-id',
+                    host_id: 'existing-host-id',
+                    source_id: 'existing-source-id',
+                    statistics: [{ 'Master': { 'errors': 0, 'invocations': 2 } }, { 'Collector': { 'errors': 1, 'invocations': 10 } }, { 'Updater': { 'errors': 0, 'invocations': 0 } }],
+                    status: 'error',
+                    details: ['Custom Error'],
+                    error_code: 'ALAZU000004'
+                }
+            };
+            const expectedUrl = '/azure/ehub/checkin/subscription-id/kktest11-rg/kktest11-name';
+            fakeStats.restore();
+            sinon.assert.calledWith(fakePost, expectedUrl, expectedCheckin);
+            done();
+        });
+    });
+    
 });
 
 
