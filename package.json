@@ -1,6 +1,6 @@
 {
   "name": "al-azure-collector-js",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "description": "Alert Logic Azure Collector Common Library",
   "repository": {},
   "private": true,
