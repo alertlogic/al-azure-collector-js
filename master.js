@@ -296,15 +296,41 @@ class AlAzureMaster {
     
     _getCustomHealthChecks() {
         var master = this;
-        return master._customHealthChecks.map(function(check){
+        return master._customHealthChecks.map(function(check) {
             return function(callback) {
                 check(master, callback)
             }
         });
     }
     
+    _getCustomStatsFuns(timestamp) {
+        var master = this;
+        return master._customStatsFuns.map(function(check) {
+            return async.reflect(function(callback) {
+                return check(master, timestamp, callback);
+            });
+        });
+    }
+    
     getStats(timestamp, callback) {
-        return this._appStats.getAppStats(timestamp, callback);
+        var master = this;
+        
+        async.parallel([
+            async.reflect(function(callback) {
+                return master._appStats.getAppStats(timestamp, callback);
+            })
+        ].concat(master._getCustomStatsFuns()),
+        function(err, results){
+            const statValues = results.reduce(function(acc, val){
+                if (val.error) {
+                    master._azureContext.log.warn('Statistics retrieval failed with', val.error);
+                    return acc;
+                } else {
+                    return Object.assign(acc, val.value);
+                }
+            }, {});
+            return callback(null, statValues);
+        });
     }
     
     getHealthStatus(callback) {
