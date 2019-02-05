@@ -277,13 +277,13 @@ describe('Master tests', function() {
             nock('https://login.microsoftonline.com:443', {'encodedQueryParams':true})
             .post(/token$/, /.*/ )
             .query(true)
-            .times(5)
+            .times(100)
             .reply(200, mock.AZURE_TOKEN_MOCK);
             
             nock('https://management.azure.com:443', {'encodedQueryParams':true})
             .get(/kktest11-name$/, /.*/ )
             .query(true)
-            .times(2)
+            .times(100)
             .reply(200, mock.getAzureWebApp());
             
             // Mock Alert Logic HTTP calls
@@ -320,8 +320,12 @@ describe('Master tests', function() {
             
         });
         
-        afterEach(function() {
+        afterEach(function(done) {
             fakeStats.restore();
+            fakePost.resetHistory();
+            fs.unlink(mock.AL_TOKEN_CACHE_FILENAME, function(err){
+                done();
+            });
         });
         
         it('Verify checkin ok', function(done) {
@@ -352,7 +356,7 @@ describe('Master tests', function() {
             nock('https://management.azure.com:443', {'encodedQueryParams':true})
             .get(/stats-error-name$/, /.*/ )
             .query(true)
-            .times(2)
+            .times(1)
             .reply(200, mock.getAzureWebApp('Limited'));
             
             process.env.WEBSITE_SITE_NAME = 'stats-error-name';
@@ -402,7 +406,6 @@ describe('Master tests', function() {
                     }
                 };
                 const expectedUrl = '/azure/ehub/checkin/subscription-id/kktest11-rg/kktest11-name';
-                fakeStats.restore();
                 sinon.assert.calledWith(fakePost, expectedUrl, expectedCheckin);
                 done();
             });
@@ -433,7 +436,87 @@ describe('Master tests', function() {
                     }
                 };
                 const expectedUrl = '/azure/ehub/checkin/subscription-id/kktest11-rg/kktest11-name';
-                fakeStats.restore();
+                sinon.assert.calledWith(fakePost, expectedUrl, expectedCheckin);
+                done();
+            });
+        });
+        
+        it('Verify checkin with collection stats fun', function(done) {
+            var collectionStatsFun = function(m, t, callback) {
+                const stats = {
+                    events: 5,
+                    bytes: 10
+                };
+                return callback(null, stats);
+            };
+            var master = new AlAzureMaster(mock.DEFAULT_FUNCTION_CONTEXT, 'ehub', '1.0.0', null, collectionStatsFun);
+            master.checkin('2017-12-22T14:31:39', function(err){
+                if (err) console.log(err);
+                const expectedCheckin = { 
+                    body: {
+                        version: '1.0.0',
+                        app_tenant_id: 'tenant-id',
+                        host_id: 'existing-host-id',
+                        source_id: 'existing-source-id',
+                        statistics: [{ 'Master': { 'errors': 0, 'invocations': 2 } }, { 'Collector': { 'errors': 1, 'invocations': 10 } }, { 'Updater': { 'errors': 0, 'invocations': 0 } }],
+                        status: 'ok',
+                        details: [],
+                        collection_stats: { events: 5, bytes: 10 }
+                    }
+                };
+                const expectedUrl = '/azure/ehub/checkin/subscription-id/kktest11-rg/kktest11-name';
+                sinon.assert.calledWith(fakePost, expectedUrl, expectedCheckin);
+                done();
+            });
+        });
+            
+        it('Verify checkin with collection stats fun error', function(done) {
+            var collectionStatsFun = function(m, t, callback) {
+                const stats = {
+                    events: 5,
+                    bytes: 10
+                };
+                return callback('Collection stats error', stats);
+            };
+            var master = new AlAzureMaster(mock.DEFAULT_FUNCTION_CONTEXT, 'ehub', '1.0.0', null, collectionStatsFun);
+            master.checkin('2017-12-22T14:31:39', function(err){
+                if (err) console.log(err);
+                const expectedCheckin = { 
+                    body: {
+                        version: '1.0.0',
+                        app_tenant_id: 'tenant-id',
+                        host_id: 'existing-host-id',
+                        source_id: 'existing-source-id',
+                        statistics: [{ 'Master': { 'errors': 0, 'invocations': 2 } }, { 'Collector': { 'errors': 1, 'invocations': 10 } }, { 'Updater': { 'errors': 0, 'invocations': 0 } }],
+                        status: 'ok',
+                        details: []
+                    }
+                };
+                const expectedUrl = '/azure/ehub/checkin/subscription-id/kktest11-rg/kktest11-name';
+                sinon.assert.calledWith(fakePost, expectedUrl, expectedCheckin);
+                done();
+            });
+        });
+        
+        it('Verify checkin with collection stats fun with bad stats', function(done) {
+            var collectionStatsFun = function(m, t, callback) {
+                return callback(null, 'Collected 10 events.');
+            };
+            var master = new AlAzureMaster(mock.DEFAULT_FUNCTION_CONTEXT, 'ehub', '1.0.0', null, collectionStatsFun);
+            master.checkin('2017-12-22T14:31:39', function(err){
+                if (err) console.log(err);
+                const expectedCheckin = { 
+                    body: {
+                        version: '1.0.0',
+                        app_tenant_id: 'tenant-id',
+                        host_id: 'existing-host-id',
+                        source_id: 'existing-source-id',
+                        statistics: [{ 'Master': { 'errors': 0, 'invocations': 2 } }, { 'Collector': { 'errors': 1, 'invocations': 10 } }, { 'Updater': { 'errors': 0, 'invocations': 0 } }],
+                        status: 'ok',
+                        details: []
+                    }
+                };
+                const expectedUrl = '/azure/ehub/checkin/subscription-id/kktest11-rg/kktest11-name';
                 sinon.assert.calledWith(fakePost, expectedUrl, expectedCheckin);
                 done();
             });
