@@ -47,9 +47,8 @@ const DEFAULT_APP_FUNCTIONS = ['Master', 'Collector', 'Updater'];
  * In case of health-check succeeds a custom health check function should call callback(null), otherwise return an error object constructed with a help of.
  * errorStatusFmt() function. For example, master.errorStatusFmt('ALAZU00001', 'Some error description');
  * 
- * @param {Array.<Function>} statsFuns - (optional) list of custom stats functions (can be just empty, so only common are applied). Default is [].
- * @param {Array.<String>} collectorAzureFuns - (optional) the list of Azure function names a collector Web application consists of. Default is ['Master', 'Collector', 'Updater'].
- * 
+ * @param {Array.<Function>} collectionStatsFun - (optional) a function which is called during checking to get collection stats. The result of the function will be assigned to 'collection_stats' property of a checkin body. Default is null.
+ * @
  * @param {Object} alOptional - optional Alert Logic service parameters.
  * @param {String} [alOptional.hostId] - (optional) Alert Logic collector host id. Default is process.env.COLLECTOR_HOST_ID
  * @param {String} [alOptional.sourceId] - (optional) Alert Logic collector source id. Default is process.env.COLLECTOR_SOURCE_ID
@@ -67,18 +66,22 @@ const DEFAULT_APP_FUNCTIONS = ['Master', 'Collector', 'Updater'];
  * @param {String} [azureOptional.resourceGroup] - (optional) Azure resource group where the function is deployed. Default is process.env.APP_RESOURCE_GROUP
  * @param {String} [azureOptional.webAppName] - (optional) Azure web application name Update is running for. Default is process.env.WEBSITE_SITE_NAME
  * 
- * @param {List} collectorAzureFuns - (optional) a list of Azure function names a collector consists of. Default is ['Master', 'Collector', 'Updater']
+ * @param {Array.<String>} collectorAzureFunNames - (optional) the list of Azure function names a collector Web application consists of. Default is ['Master', 'Collector', 'Updater'].
+ * 
  */
 class AlAzureMaster {
-    constructor(azureContext, collectorType, version, healthCheckFuns, statsFuns,
+    constructor(azureContext, collectorType, version, healthCheckFuns, collectionStatsFun,
             {hostId, sourceId, aimsKeyId, aimsKeySecret, alApiEndpoint, alAzcollectEndpoint, alDataResidency} = {},
             {clientId, domain, clientSecret, subscriptionId, resourceGroup, webAppName} = {},
-            collectorAzureFuns = DEFAULT_APP_FUNCTIONS) {
+            collectorAzureFunNames = DEFAULT_APP_FUNCTIONS) {
         this._azureContext = azureContext;
         this._collectorType = collectorType;
         this._version = version;
         this._customHealthChecks = healthCheckFuns ? healthCheckFuns : [];
-        this._customStatsFuns = statsFuns ? statsFuns : [];
+        this._collectionStatsFun = collectionStatsFun && typeof collectionStatsFun === 'function' ? collectionStatsFun :
+            function(m, ts, callback) {
+                return callback();
+        };
         
         // Init Alert Logic optional configuration parameters
         this._hostId = hostId ? hostId : process.env.COLLECTOR_HOST_ID;
@@ -124,7 +127,7 @@ class AlAzureMaster {
             { 'tokenCache': tokenCache });
                 
         this._azureWebsiteClient = new azureArmWebsite(this._azureCreds, this._subscriptionId);
-        this._appStats = new AzureWebAppStats(collectorAzureFuns);
+        this._appStats = new AzureWebAppStats(collectorAzureFunNames);
     }
     
     getApplicationTokenCredentials(){
@@ -303,23 +306,25 @@ class AlAzureMaster {
         });
     }
     
-    _getCustomStatsFuns(timestamp) {
-        var master = this;
-        return master._customStatsFuns.map(function(check) {
-            return async.reflect(function(callback) {
-                return check(master, timestamp, callback);
-            });
-        });
-    }
-    
     getStats(timestamp, callback) {
         var master = this;
         
         async.parallel([
             async.reflect(function(callback) {
                 return master._appStats.getAppStats(timestamp, callback);
+            }),
+            async.reflect(function(callback) {
+                return master._collectionStatsFun(master, timestamp, function(err, stats) {
+                    var result;
+                    if (stats && typeof stats === 'object') {
+                        result = {collection_stats: stats};
+                    } else {
+                        result = null;
+                    }
+                    return callback(err, result);
+                });
             })
-        ].concat(master._getCustomStatsFuns()),
+        ],
         function(err, results){
             const statValues = results.reduce(function(acc, val){
                 if (val.error) {
