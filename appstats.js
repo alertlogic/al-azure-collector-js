@@ -18,6 +18,11 @@ const TableUtilities = azureStorage.TableUtilities;
 
 const STATS_PERIOD_MINUTES = 15;
 
+const STAT_MSG_VISIBILITY_TIMEOUT_SEC = 300;
+const STAT_MSG_NUBMER_PER_BATCH = 32;
+
+const STAT_TYPES_LOG = 1;
+
 
 /**
  * @class
@@ -152,6 +157,174 @@ class AzureWebAppStats {
 
 }
 
+class CollectionStatRecord {
+    constructor() {
+        this.log = {
+            bytes: 0,
+            events: 0
+        };
+    };
+    
+    reset() {
+        this.log = {
+            bytes: 0,
+            events: 0
+        };
+    };
+    
+    add(addStats) {
+        if (addStats instanceof CollectionStatRecord) {
+            this.log.bytes += addStats.log.bytes;
+            this.log.events += addStats.log.events;
+        }
+        return this;
+    };
+    
+    // Update with stat messages from the Storage queue.
+    // [{invocationId : invId,
+    //    type: STAT_TYPES_LOG,
+    //    bytes: collectedBytes,
+    //    events: collectedEvents}]
+    //
+    aggregateAdd(statsMessages) {
+        var initStats = new CollectionStatRecord();
+        var aggrStats = statsMessages.reduce(function(acc, curr) {
+            switch(curr.type) {
+                case STAT_TYPES_LOG:
+                    acc.log.bytes += curr.bytes;
+                    acc.log.events += curr.events;
+                    break;
+                    
+                default:
+                    break;
+            };
+            return acc;
+        }, initStats);
+        return this.add(aggrStats);
+    }
+}
+
+class AzureCollectionStats {
+    constructor(context, {statsQueueName, outputQueueBinding} = {}) {
+        const storageParams = parse(process.env.AzureWebJobsStorage);
+        this._context = context;
+        this._statsQueueName = statsQueueName ? statsQueueName : process.env.APP_STATS_QUEUE_NAME;
+        this._outputQueueBinding = outputQueueBinding;
+        this._queueService = azureStorage.createQueueService(
+            storageParams.AccountName,
+            storageParams.AccountKey,
+            storageParams.AccountName + '.queue.core.windows.net');
+    }
+    
+    getQueueService() {
+        return this._queueService;
+    };
+    
+    _getStatsBatch(callback) {
+        var stats = this;
+        var queueService = stats._queueService;
+        const queueName = stats._statsQueueName;
+        const options = {
+            visibilityTimeout: STAT_MSG_VISIBILITY_TIMEOUT_SEC,
+            numOfMessages: STAT_MSG_NUBMER_PER_BATCH
+        };
+        var aggrStats = new CollectionStatRecord();
+        
+        queueService.getMessages(queueName, options, function(error, statsMessages) {
+            if(!error) {
+                const decodedStats = statsMessages.reduce(function(acc, msg) {
+                    try {
+                        acc.push(JSON.parse(msg.messageText));
+                        return acc;
+                    } catch (e) {
+                        return acc;
+                    }
+                }, []);
+                aggrStats.aggregateAdd(decodedStats);
+                async.each(statsMessages, function(msg, callback) {
+                    return queueService.deleteMessage(queueName, msg.messageId, msg.popReceipt, callback);
+                }, function(error) {
+                    if(!error){
+                        return callback(null, aggrStats);
+                    } else {
+                        return callback(`Inaccurate colleciton stats due to ${error}`, aggrStats);
+                    }
+                });
+            } else if (error && error.code === 'QueueNotFound') {
+                return callback(null, aggrStats);
+            } else {
+                return callback(error, aggrStats);
+            }
+        });
+    };
+    
+    getStats(callback) {
+        var stats = this;
+        const queueService = stats._queueService;
+        const queueName = stats._statsQueueName;
+        var resultStats = new CollectionStatRecord();
+        var resultError = '';
+        
+        queueService.getQueueMetadata(queueName, function(error, metadata) {
+            if (!error) {
+                var processed = 0;
+                async.doWhilst(function(callback) {
+                    stats._getStatsBatch(function(error, aggrStatsBatch) {
+                        resultError = error ? error + resultError : '';
+                        resultStats.add(aggrStatsBatch);
+                        processed += STAT_MSG_NUBMER_PER_BATCH;
+                        return callback();
+                    });
+                }, function() {
+                    return processed < metadata.approximateMessageCount;
+                }, function() {
+                    if (!resultError) {
+                        return callback(null, resultStats);
+                    } else {
+                        return callback(resultError, resultStats);
+                    }
+                });
+            } else if (error && error.code === 'QueueNotFound') {
+                return callback(null, resultStats);
+            } else {
+                return callback(error);
+            }
+        });
+    };
+    
+    putLogStats(collectedBytes, collectedEvents, callback) {
+        const invId = this._context.executionContext.invocationId; 
+        const logStats = {
+            invocationId : invId,
+            type: STAT_TYPES_LOG,
+            bytes: collectedBytes,
+            events: collectedEvents
+        };
+        return this._putStats(logStats, callback);
+    };
+    
+    _putStats(collectionStats, callback) {
+        var stats = this;
+        const queueName = stats._statsQueueName;
+        var outBinding = stats._outputQueueBinding;
+        const collectionStatsString = JSON.stringify(collectionStats);
+        if (outBinding) {
+            outBinding.push(collectionStatsString);
+            return callback(null);
+        } else {
+            return async.waterfall([
+                function(callback) {
+                    return stats._queueService.createQueueIfNotExists(queueName, callback);
+                },
+                function(metadata, resp, callback) {
+                    return stats._queueService.createMessage(queueName, collectionStatsString, callback);
+                },
+            ], callback);
+        }
+    };
+}
 module.exports = {
-    AzureWebAppStats: AzureWebAppStats
+    AzureWebAppStats: AzureWebAppStats,
+    AzureCollectionStats: AzureCollectionStats,
+    CollectionStatRecord: CollectionStatRecord
 };

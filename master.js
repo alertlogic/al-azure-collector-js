@@ -20,6 +20,7 @@ const alcollector = require('al-collector-js');
 
 const m_util = require('./util');
 const AzureWebAppStats = require('./appstats').AzureWebAppStats;
+const AzureCollectionStats = require('./appstats').AzureCollectionStats;
 
 const MASTER_RETRY_OPTS = {
     factor: 2,
@@ -47,7 +48,7 @@ const DEFAULT_APP_FUNCTIONS = ['Master', 'Collector', 'Updater'];
  * In case of health-check succeeds a custom health check function should call callback(null), otherwise return an error object constructed with a help of.
  * errorStatusFmt() function. For example, master.errorStatusFmt('ALAZU00001', 'Some error description');
  * 
- * @param {Array.<Function>} collectionStatsFun - (optional) a function which is called during checking to get collection stats. The result of the function will be assigned to 'collection_stats' property of a checkin body. Default is null.
+ * @param {Array.<Function>} collectionStatsFun - (optional,deprecated) a function which is called during checking to get collection stats. The result of the function will be assigned to 'collection_stats' property of a checkin body. Default is null.
  * @
  * @param {Object} alOptional - optional Alert Logic service parameters.
  * @param {String} [alOptional.hostId] - (optional) Alert Logic collector host id. Default is process.env.COLLECTOR_HOST_ID
@@ -73,7 +74,7 @@ class AlAzureMaster {
     constructor(azureContext, collectorType, version, healthCheckFuns, collectionStatsFun,
             {hostId, sourceId, aimsKeyId, aimsKeySecret, alApiEndpoint, alAzcollectEndpoint, alDataResidency} = {},
             {clientId, domain, clientSecret, subscriptionId, resourceGroup, webAppName} = {},
-            collectorAzureFunNames = DEFAULT_APP_FUNCTIONS) {
+            collectorAzureFunNames = DEFAULT_APP_FUNCTIONS, OutputStatsBinding = null) {
         this._azureContext = azureContext;
         this._collectorType = collectorType;
         this._version = version;
@@ -128,6 +129,7 @@ class AlAzureMaster {
                 
         this._azureWebsiteClient = new azureArmWebsite(this._azureCreds, this._subscriptionId);
         this._appStats = new AzureWebAppStats(collectorAzureFunNames);
+        this._collectionStats = new AzureCollectionStats(azureContext, {outputQueueBinding: OutputStatsBinding});
     }
     
     getApplicationTokenCredentials(){
@@ -314,10 +316,12 @@ class AlAzureMaster {
                 return master._appStats.getAppStats(timestamp, callback);
             }),
             async.reflect(function(callback) {
-                return master._collectionStatsFun(master, timestamp, function(err, stats) {
+                return master._collectionStats.getStats(function(err, stats) {
                     var result;
                     if (stats && typeof stats === 'object') {
-                        result = {collection_stats: stats};
+                        result = {
+                            collection_stats: stats
+                        };
                     } else {
                         result = null;
                     }

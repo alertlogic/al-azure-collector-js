@@ -10,6 +10,7 @@
 const assert = require('assert');
 const sinon = require('sinon');
 const fs = require('fs');
+const nock = require('nock');
 const alcollector = require('al-collector-js');
 
 const AlAzureCollector = require('../collector').AlAzureCollector;
@@ -22,6 +23,10 @@ describe('Collector tests', function() {
     
     before(function(){
         clock = sinon.useFakeTimers();
+        if (!nock.isActive()) {
+            nock.activate();
+        }
+        process.env.AzureWebJobsStorage = 'DefaultEndpointsProtocol=https;AccountName=testappo365;AccountKey=S0meKey+';
     });
     after(function(){
         clock.restore();
@@ -33,6 +38,18 @@ describe('Collector tests', function() {
                     resolve(mock.getAuthResp());
                 });
         });
+        // Collection stats Azure mocks
+        nock(/queue.core.windows.net:443/, {'encodedQueryParams':true})
+        .head('/alertlogic-stats')
+        .query({'comp':'metadata'})
+        .reply(200, '', mock.statsQueueMetadataHeaders());
+        
+        nock(/queue.core.windows.net:443/, {'encodedQueryParams':true})
+        .post('/alertlogic-stats/messages' )
+        .query(true)
+        .times(100)
+        .reply(201, '');
+        
     });
     afterEach(function(done) {
         fakePost.restore();
