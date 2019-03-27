@@ -10,6 +10,8 @@
 'use strict';
 
 const alcollector = require('al-collector-js');
+const AzureCollectionStats = require('./appstats').AzureCollectionStats;
+
 
 const COLLECTOR_RETRY_OPTS = {
     factor: 2,
@@ -57,6 +59,7 @@ class AlAzureCollector {
         var ingestEndpoint = alIngestEndpoint ? alIngestEndpoint : process.env.APP_INGEST_ENDPOINT;
         this._ingestc = new alcollector.IngestC(ingestEndpoint, aimsc, 'azure_function', COLLECTOR_RETRY_OPTS);
         this._alDataResidency = alDataResidency ? alDataResidency : process.env.CUSTOMCONNSTR_APP_AL_RESIDENCY;
+        this._collectionStats = new AzureCollectionStats(azureContext);
     }
     
     _defaultHostmetaElems() {
@@ -95,6 +98,7 @@ class AlAzureCollector {
         // Somebody can still pass 'undefined' as hostmetaElems and it will be added to args list.
         var hm = hostmetaElems ? hostmetaElems : this._defaultHostmetaElems();
         var ingestc = this._ingestc;
+        var stats = this._collectionStats;
         
         if (messages && messages.length > 0) {
             alcollector.AlLog.buildPayload(this._hostId, this._sourceId, hm, messages, formatFun, function(err, payload){
@@ -103,7 +107,9 @@ class AlAzureCollector {
                 } else {
                     ingestc.sendAicspmsgs(payload)
                         .then( resp => {
-                            return callback(null, resp);
+                            // Subtract 2 bytes in order not to count array brackets [].
+                            const bytes = JSON.stringify(messages).length - 2;
+                            return stats.putLogStats(bytes, messages.length, callback);
                         })
                         .catch( err => {
                             return callback(err);

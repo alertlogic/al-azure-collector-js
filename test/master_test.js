@@ -286,6 +286,30 @@ describe('Master tests', function() {
             .times(100)
             .reply(200, mock.getAzureWebApp());
             
+            // Collection stats Azure mocks
+            nock('https://testappo365.queue.core.windows.net:443', {'encodedQueryParams':true})
+            .get('/alertlogic-stats')
+            .query({'comp':'metadata'})
+            .reply(200, '', mock.statsQueueMetadataHeaders());
+
+            nock('https://testappo365.queue.core.windows.net:443', {'encodedQueryParams':true})
+            .post('/alertlogic-stats/messages' )
+            .query(true)
+            .times(100)
+            .reply(201, '');
+            
+            nock('https://testappo365.queue.core.windows.net:443', {"encodedQueryParams":true})
+            .get('/alertlogic-stats/messages')
+            .query(true)
+            .times(100)
+            .reply(200, mock.statsMessage);
+            
+            nock('https://testappo365.queue.core.windows.net:443', {"encodedQueryParams":true})
+            .delete(/alertlogic-stats\/messages.*/)
+            .query(true)
+            .times(100)
+            .reply(204,'');
+            
             // Mock Alert Logic HTTP calls
             fakePost = sinon.stub(alcollector.AlServiceC.prototype, 'post').callsFake(
                 function fakeFn(path, extraOptions) {
@@ -336,6 +360,7 @@ describe('Master tests', function() {
                     body: {
                         version: '1.0.0',
                         app_tenant_id: 'tenant-id',
+                        collection_stats: { 'log': { 'bytes': 10, 'events': 15 } },
                         host_id: 'existing-host-id',
                         source_id: 'existing-source-id',
                         statistics: [{ 'Master': { 'errors': 0, 'invocations': 2 } }, { 'Collector': { 'errors': 1, 'invocations': 10 } }, { 'Updater': { 'errors': 0, 'invocations': 0 } }],
@@ -367,6 +392,7 @@ describe('Master tests', function() {
                     body: {
                         version: '1.0.0',
                         app_tenant_id: 'tenant-id',
+                        collection_stats: { 'log': { 'bytes': 10, 'events': 15 } },
                         host_id: 'existing-host-id',
                         source_id: 'existing-source-id',
                         statistics: [{ 'Master': { 'errors': 0, 'invocations': 2 } }, { 'Collector': { 'errors': 1, 'invocations': 10 } }, { 'Updater': { 'errors': 0, 'invocations': 0 } }],
@@ -398,6 +424,7 @@ describe('Master tests', function() {
                     body: {
                         version: '1.0.0',
                         app_tenant_id: 'tenant-id',
+                        collection_stats: { 'log': { 'bytes': 10, 'events': 15 } },
                         host_id: 'existing-host-id',
                         source_id: 'existing-source-id',
                         statistics: [{ 'Master': { 'errors': 0, 'invocations': 2 } }, { 'Collector': { 'errors': 1, 'invocations': 10 } }, { 'Updater': { 'errors': 0, 'invocations': 0 } }],
@@ -427,6 +454,7 @@ describe('Master tests', function() {
                     body: {
                         version: '1.0.0',
                         app_tenant_id: 'tenant-id',
+                        collection_stats: { 'log': { 'bytes': 10, 'events': 15 } },
                         host_id: 'existing-host-id',
                         source_id: 'existing-source-id',
                         statistics: [{ 'Master': { 'errors': 0, 'invocations': 2 } }, { 'Collector': { 'errors': 1, 'invocations': 10 } }, { 'Updater': { 'errors': 0, 'invocations': 0 } }],
@@ -441,86 +469,7 @@ describe('Master tests', function() {
             });
         });
         
-        it('Verify checkin with collection stats fun', function(done) {
-            var collectionStatsFun = function(m, t, callback) {
-                const stats = {
-                    events: 5,
-                    bytes: 10
-                };
-                return callback(null, stats);
-            };
-            var master = new AlAzureMaster(mock.DEFAULT_FUNCTION_CONTEXT, 'ehub', '1.0.0', null, collectionStatsFun);
-            master.checkin('2017-12-22T14:31:39', function(err){
-                if (err) console.log(err);
-                const expectedCheckin = { 
-                    body: {
-                        version: '1.0.0',
-                        app_tenant_id: 'tenant-id',
-                        host_id: 'existing-host-id',
-                        source_id: 'existing-source-id',
-                        statistics: [{ 'Master': { 'errors': 0, 'invocations': 2 } }, { 'Collector': { 'errors': 1, 'invocations': 10 } }, { 'Updater': { 'errors': 0, 'invocations': 0 } }],
-                        status: 'ok',
-                        details: [],
-                        collection_stats: { events: 5, bytes: 10 }
-                    }
-                };
-                const expectedUrl = '/azure/ehub/checkin/subscription-id/kktest11-rg/kktest11-name';
-                sinon.assert.calledWith(fakePost, expectedUrl, expectedCheckin);
-                done();
-            });
-        });
-            
-        it('Verify checkin with collection stats fun error', function(done) {
-            var collectionStatsFun = function(m, t, callback) {
-                const stats = {
-                    events: 5,
-                    bytes: 10
-                };
-                return callback('Collection stats error', stats);
-            };
-            var master = new AlAzureMaster(mock.DEFAULT_FUNCTION_CONTEXT, 'ehub', '1.0.0', null, collectionStatsFun);
-            master.checkin('2017-12-22T14:31:39', function(err){
-                if (err) console.log(err);
-                const expectedCheckin = { 
-                    body: {
-                        version: '1.0.0',
-                        app_tenant_id: 'tenant-id',
-                        host_id: 'existing-host-id',
-                        source_id: 'existing-source-id',
-                        statistics: [{ 'Master': { 'errors': 0, 'invocations': 2 } }, { 'Collector': { 'errors': 1, 'invocations': 10 } }, { 'Updater': { 'errors': 0, 'invocations': 0 } }],
-                        status: 'ok',
-                        details: []
-                    }
-                };
-                const expectedUrl = '/azure/ehub/checkin/subscription-id/kktest11-rg/kktest11-name';
-                sinon.assert.calledWith(fakePost, expectedUrl, expectedCheckin);
-                done();
-            });
-        });
         
-        it('Verify checkin with collection stats fun with bad stats', function(done) {
-            var collectionStatsFun = function(m, t, callback) {
-                return callback(null, 'Collected 10 events.');
-            };
-            var master = new AlAzureMaster(mock.DEFAULT_FUNCTION_CONTEXT, 'ehub', '1.0.0', null, collectionStatsFun);
-            master.checkin('2017-12-22T14:31:39', function(err){
-                if (err) console.log(err);
-                const expectedCheckin = { 
-                    body: {
-                        version: '1.0.0',
-                        app_tenant_id: 'tenant-id',
-                        host_id: 'existing-host-id',
-                        source_id: 'existing-source-id',
-                        statistics: [{ 'Master': { 'errors': 0, 'invocations': 2 } }, { 'Collector': { 'errors': 1, 'invocations': 10 } }, { 'Updater': { 'errors': 0, 'invocations': 0 } }],
-                        status: 'ok',
-                        details: []
-                    }
-                };
-                const expectedUrl = '/azure/ehub/checkin/subscription-id/kktest11-rg/kktest11-name';
-                sinon.assert.calledWith(fakePost, expectedUrl, expectedCheckin);
-                done();
-            });
-        });
     });
 });
 

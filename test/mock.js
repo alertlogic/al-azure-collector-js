@@ -12,6 +12,7 @@ const util = require('util');
 
 
 process.env.TMP = '/tmp';
+process.env.APP_STATS_QUEUE_NAME = 'alertlogic-stats';
 
 const AZURE_TOKEN_MOCK = {
     'token_type' : 'Bearer',
@@ -167,7 +168,9 @@ const CHECKIN_RESPONSE_OK = {
 };
 
 const DEFAULT_FUNCTION_CONTEXT = {
-    invocationId: 'invocation-id',
+    executionContext: {
+        invocationId: 'invocation-id',
+    },
     bindings: {
     },
     log: {
@@ -338,6 +341,59 @@ var UPDATER_INVOCATION_LOGS_CONTD = {
         ]
     };
 
+var statsQueueMetadataHeaders = function(approxNumOfMessages = '0') {
+    return [ 'Cache-Control',
+        'no-cache',
+        'Content-Length',
+        '0',
+        'Server',
+        'Windows-Azure-Queue/1.0 Microsoft-HTTPAPI/2.0',
+        'x-ms-request-id',
+        '998e5a8b-6003-00b8-0bd6-dfe919000000',
+        'x-ms-version',
+        '2018-03-28',
+        'x-ms-approximate-messages-count',
+        approxNumOfMessages,
+        'Date',
+        'Thu, 21 Mar 2019 11:09:45 GMT' ];
+};
+
+// Contains 10 bytes and 15 events
+const statsMessage = "﻿<?xml version=\"1.0\" encoding=\"utf-8\"?><QueueMessagesList><QueueMessage><MessageId>3b6915a7-373f-42ae-b40c-2ab8d49bce29</MessageId><InsertionTime>Thu, 21 Mar 2019 11:09:45 GMT</InsertionTime><ExpirationTime>Thu, 28 Mar 2019 11:09:45 GMT</ExpirationTime><PopReceipt>AgAAAAMAAAAAAAAAo1dBStff1AE=</PopReceipt><TimeNextVisible>Thu, 21 Mar 2019 11:14:45 GMT</TimeNextVisible><DequeueCount>1</DequeueCount><MessageText>{&amp;quot;invocationId&amp;quot;:&amp;quot;invocation-id&amp;quot;,&amp;quot;type&amp;quot;:1,&amp;quot;bytes&amp;quot;:10,&amp;quot;events&amp;quot;:15}</MessageText></QueueMessage></QueueMessagesList>";
+
+// Consists of two messages with 10 bytes and 15 events each. Total 20 bytes and 30 events
+const statsMessages = "﻿<?xml version=\"1.0\" encoding=\"utf-8\"?><QueueMessagesList><QueueMessage><MessageId>3b6915a7-373f-42ae-b40c-2ab8d49bce29</MessageId><InsertionTime>Thu, 21 Mar 2019 11:09:45 GMT</InsertionTime><ExpirationTime>Thu, 28 Mar 2019 11:09:45 GMT</ExpirationTime><PopReceipt>AgAAAAMAAAAAAAAAo1dBStff1AE=</PopReceipt><TimeNextVisible>Thu, 21 Mar 2019 11:14:45 GMT</TimeNextVisible><DequeueCount>1</DequeueCount><MessageText>{&amp;quot;invocationId&amp;quot;:&amp;quot;invocation-id&amp;quot;,&amp;quot;type&amp;quot;:1,&amp;quot;bytes&amp;quot;:10,&amp;quot;events&amp;quot;:15}</MessageText></QueueMessage><QueueMessage><MessageId>3b6915a7-373f-42ae-b40c-2ab8d49bce29</MessageId><InsertionTime>Thu, 21 Mar 2019 11:09:45 GMT</InsertionTime><ExpirationTime>Thu, 28 Mar 2019 11:09:45 GMT</ExpirationTime><PopReceipt>AgAAAAMAAAAAAAAAo1dBStff1AE=</PopReceipt><TimeNextVisible>Thu, 21 Mar 2019 11:14:45 GMT</TimeNextVisible><DequeueCount>1</DequeueCount><MessageText>{&amp;quot;invocationId&amp;quot;:&amp;quot;invocation-id&amp;quot;,&amp;quot;type&amp;quot;:1,&amp;quot;bytes&amp;quot;:10,&amp;quot;events&amp;quot;:15}</MessageText></QueueMessage></QueueMessagesList>";
+
+const statsQueue403 = "﻿<?xml version=\"1.0\" encoding=\"utf-8\"?><Error><Code>AuthenticationFailed</Code><Message>Server failed to authenticate the request. Make sure the value of Authorization header is formed correctly including the signature.\nRequestId:e3304c9c-b003-0012-72e8-e2c90f000000\nTime:2019-03-25T08:52:07.6793162Z</Message><AuthenticationErrorDetail>Request date header too old: 'Thu, 01 Jan 1970 00:00:00 GMT'</AuthenticationErrorDetail></Error>";
+const statsQueue403Headers = [ 'Content-Length',
+    '435',
+    'Content-Type',
+    'application/xml',
+    'Server',
+    'Microsoft-HTTPAPI/2.0',
+    'x-ms-request-id',
+    'e3304c9c-b003-0012-72e8-e2c90f000000',
+    'x-ms-error-code',
+    'AuthenticationFailed',
+    'Date',
+    'Mon, 25 Mar 2019 08:52:07 GMT' ];
+
+const statsQueue404 = "﻿<?xml version=\"1.0\" encoding=\"utf-8\"?><Error><Code>QueueNotFound</Code><Message>The specified queue does not exist.\nRequestId:08c66f19-b003-0060-6fee-e2ce40000000\nTime:2019-03-25T09:38:08.2935978Z</Message></Error>";
+const statsQueue404Headers = [ 'Content-Length',
+    '217',
+    'Content-Type',
+    'application/xml',
+    'Server',
+    'Windows-Azure-Queue/1.0 Microsoft-HTTPAPI/2.0',
+    'x-ms-request-id',
+    '08c66f19-b003-0060-6fee-e2ce40000000',
+    'x-ms-version',
+    '2018-03-28',
+    'x-ms-error-code',
+    'QueueNotFound',
+    'Date',
+    'Mon, 25 Mar 2019 09:38:07 GMT' ];
+
 module.exports = {
     AZURE_TOKEN_MOCK: AZURE_TOKEN_MOCK,
     AL_CID: AL_CID,
@@ -355,5 +411,12 @@ module.exports = {
     UPDATER_INVOCATION_LOGS_CONTD: UPDATER_INVOCATION_LOGS_CONTD,
     CHECKIN_RESPONSE_OK: CHECKIN_RESPONSE_OK,
     getAzureWebApp: getAzureWebApp,
-    getAuthResp: getAuthResp
+    getAuthResp: getAuthResp,
+    statsQueueMetadataHeaders: statsQueueMetadataHeaders,
+    statsMessage: statsMessage,
+    statsMessages: statsMessages,
+    statsQueue403: statsQueue403,
+    statsQueue403Headers: statsQueue403Headers,
+    statsQueue404: statsQueue404,
+    statsQueue404Headers: statsQueue404Headers
 };
