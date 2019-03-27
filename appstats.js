@@ -19,7 +19,7 @@ const TableUtilities = azureStorage.TableUtilities;
 const STATS_PERIOD_MINUTES = 15;
 
 const STAT_MSG_VISIBILITY_TIMEOUT_SEC = 300;
-const STAT_MSG_NUBMER_PER_BATCH = 32;
+const STAT_MSG_NUMBER_PER_BATCH = 32;
 
 const STAT_TYPES_LOG = 1;
 
@@ -180,27 +180,50 @@ class CollectionStatRecord {
         return this;
     };
     
+    subtract(subtractStats) {
+        if (subtractStats instanceof CollectionStatRecord) {
+            this.log.bytes -= subtractStats.log.bytes > this.log.bytes ? this.log.bytes : subtractStats.log.bytes;
+            this.log.events -= subtractStats.log.events > this.log.events ? this.log.events : subtractStats.log.events;
+        }
+        return this;
+    };
+    
     // Update with stat messages from the Storage queue.
-    // [{invocationId : invId,
-    //    type: STAT_TYPES_LOG,
-    //    bytes: collectedBytes,
-    //    events: collectedEvents}]
+    // msg.messageText is a JSON like.
+    // {invocationId : invId,
+    //  type: STAT_TYPES_LOG,
+    //  bytes: collectedBytes,
+    //  events: collectedEvents}
     //
-    aggregateAdd(statsMessages) {
+    _aggregateStats(statsMessages) {
         var initStats = new CollectionStatRecord();
-        var aggrStats = statsMessages.reduce(function(acc, curr) {
-            switch(curr.type) {
-                case STAT_TYPES_LOG:
-                    acc.log.bytes += curr.bytes;
-                    acc.log.events += curr.events;
-                    break;
-                    
-                default:
-                    break;
-            };
-            return acc;
+        return statsMessages.reduce(function(acc, curr) {
+            try {
+                const stat = JSON.parse(curr.messageText);
+                switch(stat.type) {
+                    case STAT_TYPES_LOG:
+                        acc.log.bytes += stat.bytes;
+                        acc.log.events += stat.events;
+                        break;
+                        
+                    default:
+                        break;
+                };
+                return acc;
+            } catch (e) {
+                return acc;
+            }
         }, initStats);
+    };
+    
+    aggregateAdd(statsMessages) {
+        const aggrStats = this._aggregateStats(statsMessages);
         return this.add(aggrStats);
+    };
+    
+    aggregateSubtract(statsMessages) {
+        const aggrStats = this._aggregateStats(statsMessages);
+        return this.subtract(aggrStats);
     }
 }
 
@@ -226,29 +249,20 @@ class AzureCollectionStats {
         const queueName = stats._statsQueueName;
         const options = {
             visibilityTimeout: STAT_MSG_VISIBILITY_TIMEOUT_SEC,
-            numOfMessages: STAT_MSG_NUBMER_PER_BATCH
+            numOfMessages: STAT_MSG_NUMBER_PER_BATCH
         };
         var aggrStats = new CollectionStatRecord();
         
         queueService.getMessages(queueName, options, function(error, statsMessages) {
             if(!error) {
-                const decodedStats = statsMessages.reduce(function(acc, msg) {
-                    try {
-                        acc.push(JSON.parse(msg.messageText));
-                        return acc;
-                    } catch (e) {
-                        return acc;
-                    }
-                }, []);
-                aggrStats.aggregateAdd(decodedStats);
-                async.each(statsMessages, function(msg, callback) {
-                    return queueService.deleteMessage(queueName, msg.messageId, msg.popReceipt, callback);
-                }, function(error) {
-                    if(!error){
-                        return callback(null, aggrStats);
-                    } else {
-                        return callback(`Inaccurate colleciton stats due to ${error}`, aggrStats);
-                    }
+                aggrStats.aggregateAdd(statsMessages);
+                async.filter(statsMessages, function(msg, callback) {
+                    queueService.deleteMessage(queueName, msg.messageId, msg.popReceipt, function(err) {
+                        return callback(null, err);
+                    });
+                }, function(error, undeleted) {
+                    aggrStats.aggregateSubtract(undeleted);
+                    return callback(null, aggrStats);
                 });
             } else if (error && error.code === 'QueueNotFound') {
                 return callback(null, aggrStats);
@@ -270,9 +284,9 @@ class AzureCollectionStats {
                 var processed = 0;
                 async.doWhilst(function(callback) {
                     stats._getStatsBatch(function(error, aggrStatsBatch) {
-                        resultError = error ? error + resultError : '';
+                        resultError = error ? error + resultError : resultError;
                         resultStats.add(aggrStatsBatch);
-                        processed += STAT_MSG_NUBMER_PER_BATCH;
+                        processed += STAT_MSG_NUMBER_PER_BATCH;
                         return callback();
                     });
                 }, function() {
@@ -287,7 +301,7 @@ class AzureCollectionStats {
             } else if (error && error.code === 'QueueNotFound') {
                 return callback(null, resultStats);
             } else {
-                return callback(error);
+                return callback(error, resultStats);
             }
         });
     };

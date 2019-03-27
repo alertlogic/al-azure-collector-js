@@ -301,11 +301,13 @@ describe('Master tests', function() {
             nock('https://testappo365.queue.core.windows.net:443', {"encodedQueryParams":true})
             .get('/alertlogic-stats/messages')
             .query(true)
+            .times(100)
             .reply(200, mock.statsMessage);
             
             nock('https://testappo365.queue.core.windows.net:443', {"encodedQueryParams":true})
             .delete(/alertlogic-stats\/messages.*/)
             .query(true)
+            .times(100)
             .reply(204,'');
             
             // Mock Alert Logic HTTP calls

@@ -258,8 +258,6 @@ describe('App Stats tests', function() {
             
             var collectionStats = new AzureCollectionStats(mock.DEFAULT_FUNCTION_CONTEXT);
             
-            var qs = collectionStats.getQueueService();
-            
             collectionStats.putLogStats(10, 20, function(err) {
                 assert.equal(err.statusCode, 403);
                 done();
@@ -413,7 +411,7 @@ describe('App Stats tests', function() {
                });
            });
 
-        it('getStats inaccurate stats. Error in delete message.', function(done) {
+        it('getStats accurate stats with an error in delete message.', function(done) {
             // Collection stats Azure mocks
                nock('https://testappo365.queue.core.windows.net:443', {'encodedQueryParams':true})
                .get('/alertlogic-stats')
@@ -430,19 +428,21 @@ describe('App Stats tests', function() {
                nock('https://testappo365.queue.core.windows.net:443', {"encodedQueryParams":true})
                .delete(/alertlogic-stats\/messages.*/)
                .query(true)
-               .times(2)
+               // First 4 messages are removed successfully
+               .times(4)
                .reply(204,'')
                .delete(/alertlogic-stats\/messages.*/)
                .query(true)
-               .times(1)
+               // The last two messages from the last message batch get delete error
+               .times(2)
                .reply(403, mock.statsQueue403, mock.statsQueue403Headers);
 
                process.env.AzureWebJobsStorage = 'DefaultEndpointsProtocol=https;AccountName=testappo365;AccountKey=S0meKey+';
                var collectionStats = new AzureCollectionStats(mock.DEFAULT_FUNCTION_CONTEXT);
                
                collectionStats.getStats(function(err, result) {
-                   const expected = { log: { bytes: 60, events: 90 } };
-                   assert.notEqual(err, null);
+                   const expected = { log: { bytes: 40, events: 60 } };
+                   assert.equal(err, null);
                    assert.deepEqual(result, expected);
                    done();
                });
@@ -461,29 +461,32 @@ describe('App Stats tests', function() {
             var stats2 = new CollectionStatRecord();
             
             var statsData = [
-                {type: 1, // STAT_TYPES_LOG
-                 bytes: 10,
-                 events: 5},
-                {type: 1, // STAT_TYPES_LOG
-                 bytes: 10,
-                 events: 5},
-                {type: 1, // STAT_TYPES_LOG
-                 bytes: 10,
-                 events: 5}
+                // STAT_TYPES_LOG
+                { messageText: '{ "type": 1, "bytes": 1000, "events": 10 }'},
+                { messageText: '{ "type": 1, "bytes": 2000, "events": 20 }'},
+                { messageText: '{ "type": 1, "bytes": 3000, "events": 30 }'}
             ];
             
             assert.deepEqual(stats1, { log: { bytes: 0, events: 0 } });
+            assert.deepEqual(stats2, { log: { bytes: 0, events: 0 } });
             
             stats1.aggregateAdd(statsData);
-            assert.deepEqual(stats1, { log: { bytes: 30, events: 15 } });
-            
             stats2.aggregateAdd(statsData);
+            stats2.aggregateAdd([]);
+            assert.deepEqual(stats1, { log: { bytes: 6000, events: 60 } });
+            assert.deepEqual(stats2, { log: { bytes: 6000, events: 60 } });
             
             stats1.add(stats2);
-            assert.deepEqual(stats1, { log: { bytes: 60, events: 30 } });
+            assert.deepEqual(stats1, { log: { bytes: 12000, events: 120 } });
             
-            stats1.reset();
+            stats1.aggregateSubtract(statsData);
+            assert.deepEqual(stats1, { log: { bytes: 6000, events: 60 } });
+            
+            stats1.subtract(stats2);
             assert.deepEqual(stats1, { log: { bytes: 0, events: 0 } });
+            
+            stats2.reset();
+            assert.deepEqual(stats2, { log: { bytes: 0, events: 0 } });
             
             done();
         });
