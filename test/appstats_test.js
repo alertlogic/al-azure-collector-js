@@ -61,9 +61,9 @@ describe('App Stats tests', function() {
                 statistics: []
             };
             var stats = new AzureWebAppStats();
-            stats.getAppStats('2017-12-22T14:31:39', function(err, stats) {
+            stats.getAppStats('2017-12-22T14:31:39', function(err, appStats) {
                 msTableServiceStub.restore();
-                assert.deepEqual(expectedStats, stats);
+                assert.deepEqual(expectedStats, appStats);
                 done();
             });
         });
@@ -87,9 +87,9 @@ describe('App Stats tests', function() {
                 ]
             };
             var stats = new AzureWebAppStats(DEFAULT_APP_FUNCTIONS);
-            stats.getAppStats('2017-12-22T14:31:39', function(err, stats) {
+            stats.getAppStats('2017-12-22T14:31:39', function(err, appStats) {
                 msTableServiceStub.restore();
-                assert.deepEqual(expectedStats, stats);
+                assert.deepEqual(expectedStats, appStats);
                 done();
             });
         });
@@ -127,10 +127,10 @@ describe('App Stats tests', function() {
             };
             
             var stats = new AzureWebAppStats(DEFAULT_APP_FUNCTIONS);
-            stats.getAppStats('2017-12-22T14:31:39', function(err, stats) {
+            stats.getAppStats('2017-12-22T14:31:39', function(err, appStats) {
                 msTableServiceStub.restore();
                 getInvocationQueryStub.restore();
-                assert.deepEqual(expectedStats, stats);
+                assert.deepEqual(expectedStats, appStats);
                 done();
             });
         });
@@ -173,10 +173,10 @@ describe('App Stats tests', function() {
             };
             
             var stats = new AzureWebAppStats(DEFAULT_APP_FUNCTIONS);
-            stats.getAppStats('2017-12-22T14:31:39', function(err, stats) {
+            stats.getAppStats('2017-12-22T14:31:39', function(err, appStats) {
                 msTableServiceStub.restore();
                 getInvocationQueryStub.restore();
-                assert.deepEqual(expectedStats, stats);
+                assert.deepEqual(expectedStats, appStats);
                 done();
             });
         });
@@ -202,10 +202,10 @@ describe('App Stats tests', function() {
             };
             
             var stats = new AzureWebAppStats(DEFAULT_APP_FUNCTIONS);
-            stats.getAppStats('2017-12-22T14:31:39', function(err, stats) {
+            stats.getAppStats('2017-12-22T14:31:39', function(err, appStats) {
                 console.log(JSON.stringify(stats));
                 msTableServiceStub.restore();
-                assert.deepEqual(expectedStats, stats);
+                assert.deepEqual(expectedStats, appStats);
                 done();
             });
         });
