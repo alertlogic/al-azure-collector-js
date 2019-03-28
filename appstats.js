@@ -23,6 +23,8 @@ const STAT_MSG_NUMBER_PER_BATCH = 32;
 
 const STAT_TYPES_LOG = 1;
 
+const DEFAULT_STATS_QUEUE_NAME = 'alertlogic-stats';
+
 
 /**
  * @class
@@ -231,7 +233,8 @@ class AzureCollectionStats {
     constructor(context, {statsQueueName, outputQueueBinding} = {}) {
         const storageParams = parse(process.env.AzureWebJobsStorage);
         this._context = context;
-        this._statsQueueName = statsQueueName ? statsQueueName : process.env.APP_STATS_QUEUE_NAME;
+        this._statsQueueName = statsQueueName ? statsQueueName :
+            process.env.APP_STATS_QUEUE_NAME ? process.env.APP_STATS_QUEUE_NAME : DEFAULT_STATS_QUEUE_NAME;
         this._outputQueueBinding = outputQueueBinding;
         this._queueService = azureStorage.createQueueService(
             storageParams.AccountName,
