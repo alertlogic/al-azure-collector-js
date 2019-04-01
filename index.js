@@ -1,5 +1,5 @@
 /* -----------------------------------------------------------------------------
- * @copyright (C) 2018, Alert Logic, Inc
+ * @copyright (C) 2019, Alert Logic, Inc
  * @doc
  *
  * Helper classes and function for Azure function based collectors.
@@ -30,4 +30,11 @@ exports.AlAzureUpdater = updater.AlAzureUpdater;
  */
 var collector = require('./collector');
 exports.AlAzureCollector = collector.AlAzureCollector;
+
+/**
+ * Dead letter blob exports
+ * 
+ */
+var dlblob = require('./dlblob');
+exports.AlAzureDlBlob = dlblob.AlAzureDlBlob;
 

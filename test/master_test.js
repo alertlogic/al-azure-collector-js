@@ -370,7 +370,7 @@ describe('Master tests', function() {
                 };
                 const expectedUrl = '/azure/ehub/checkin/subscription-id/kktest11-rg/kktest11-name';
                 fakeStats.restore();
-                sinon.assert.calledWith(fakePost, expectedUrl, expectedCheckin);
+                sinon.assert.calledWithMatch(fakePost, expectedUrl, expectedCheckin);
                 assert.equal(resp, mock.CHECKIN_RESPONSE_OK);
                 done();
             });
@@ -403,7 +403,7 @@ describe('Master tests', function() {
                 };
                 const expectedUrl = '/azure/ehub/checkin/subscription-id/kktest11-rg/stats-error-name';
                 fakeStats.restore();
-                sinon.assert.calledWith(fakePost, expectedUrl, expectedCheckin);
+                sinon.assert.calledWithMatch(fakePost, expectedUrl, expectedCheckin);
                 done();
             });
         });
@@ -433,7 +433,7 @@ describe('Master tests', function() {
                     }
                 };
                 const expectedUrl = '/azure/ehub/checkin/subscription-id/kktest11-rg/kktest11-name';
-                sinon.assert.calledWith(fakePost, expectedUrl, expectedCheckin);
+                sinon.assert.calledWithMatch(fakePost, expectedUrl, expectedCheckin);
                 done();
             });
         });
@@ -464,7 +464,7 @@ describe('Master tests', function() {
                     }
                 };
                 const expectedUrl = '/azure/ehub/checkin/subscription-id/kktest11-rg/kktest11-name';
-                sinon.assert.calledWith(fakePost, expectedUrl, expectedCheckin);
+                sinon.assert.calledWithMatch(fakePost, expectedUrl, expectedCheckin);
                 done();
             });
         });
