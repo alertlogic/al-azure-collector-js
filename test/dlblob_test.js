@@ -90,6 +90,7 @@ describe('Dead letter blob processing unit tests.', function() {
             });
         var dlblob = new AlAzureDlBlob(mock.DEFAULT_FUNCTION_CONTEXT, testProcessingStub);
         dlblob.processDlBlobs({}, function(err) {
+            assert.equal(err, null);
             sinon.assert.callCount(deleteBlobStub, 6);
             sinon.assert.callCount(testProcessingStub, 6);
             done();
@@ -139,7 +140,7 @@ describe('Dead letter blob processing unit tests.', function() {
         // Delete blob
         nock('https://kktestdl.blob.core.windows.net:443', {'encodedQueryParams':true})
         .delete(/alertlogic-dl.*/)
-        .times(5)
+        .times(1)
         .reply(202);
         
         var testProcessingStub = sinon.stub().callsFake(

@@ -2,7 +2,7 @@
  * @copyright (C) 2019, Alert Logic, Inc
  * @doc
  * 
- * Base class for a dead letter blob processing function.
+ * Basic class for a dead letter blob processing.
  * Dead letter blobs are located in 'alertlogic-dl' container located in the
  * web application storage account.
  * The actual collector function.json blob binding for dead letters should looks like:
@@ -30,7 +30,7 @@ const DEFAULT_DL_CONTAINER_NAME = 'alertlogic-dl';
 
 /**
  * @class
- * Base class for dead letter blobs processing.
+ * Dead letter blobs processing class.
  *
  * @constructor
  * @param {Object} context - context of Azure function.
