@@ -284,7 +284,7 @@ describe('App Stats tests', function() {
         });
 
         it('checks getStats ok case', function(done) {
-         // Collection stats Azure mocks
+            // Collection stats Azure mocks
             nock('https://testappo365.queue.core.windows.net:443', {'encodedQueryParams':true})
             .get('/alertlogic-stats')
             .query({'comp':'metadata'})
@@ -315,7 +315,7 @@ describe('App Stats tests', function() {
         });
         
         it('checks getStats ok 2 batches', function(done) {
-            // Collection stats Azure mocks
+                // Collection stats Azure mocks
                nock('https://testappo365.queue.core.windows.net:443', {'encodedQueryParams':true})
                .get('/alertlogic-stats')
                .query({'comp':'metadata'})
@@ -346,7 +346,7 @@ describe('App Stats tests', function() {
            });
         
         it('checks getStats ok 3 batches', function(done) {
-            // Collection stats Azure mocks
+                // Collection stats Azure mocks
                nock('https://testappo365.queue.core.windows.net:443', {'encodedQueryParams':true})
                .get('/alertlogic-stats')
                .query({'comp':'metadata'})
@@ -377,7 +377,7 @@ describe('App Stats tests', function() {
            });
         
         it('getStats inaccurate stats. Error in get message batch.', function(done) {
-            // Collection stats Azure mocks
+                // Collection stats Azure mocks
                nock('https://testappo365.queue.core.windows.net:443', {'encodedQueryParams':true})
                .get('/alertlogic-stats')
                .query({'comp':'metadata'})
@@ -412,7 +412,7 @@ describe('App Stats tests', function() {
            });
 
         it('getStats accurate stats with an error in delete message.', function(done) {
-            // Collection stats Azure mocks
+                // Collection stats Azure mocks
                nock('https://testappo365.queue.core.windows.net:443', {'encodedQueryParams':true})
                .get('/alertlogic-stats')
                .query({'comp':'metadata'})
