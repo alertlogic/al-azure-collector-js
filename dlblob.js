@@ -66,9 +66,9 @@ class AlAzureDlBlob {
                     return callback(listErr);
                 } else {
                     dlblob._context.log.verbose('Listed blobs: ', data.entries.length);
-                    async.eachLimit(data.entries, CONCURRENT_BLOB_PROCESS_NUM, function(blob, asyncCallback) {
+                    async.mapLimit(data.entries, CONCURRENT_BLOB_PROCESS_NUM, async.reflect(function(blob, asyncCallback) {
                         return dlblob._processDlBlob(blob, asyncCallback);
-                    }, callback);
+                    }), callback);
                 }
         });
     };

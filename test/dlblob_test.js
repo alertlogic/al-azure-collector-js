@@ -148,9 +148,14 @@ describe('Dead letter blob processing unit tests.', function() {
                     return callback(null);
                 });
         var dlblob = new AlAzureDlBlob(mock.DEFAULT_FUNCTION_CONTEXT, testProcessingStub);
-        dlblob.processDlBlobs({}, function(err) {
-            assert.equal(err.code, 'ContainerNotFound');
-            assert.equal(err.statusCode, 404);
+        dlblob.processDlBlobs({}, function(err, result) {
+            assert.equal(err, null);
+            assert.equal(result[0].value.isSuccessful, true);
+            var errors = result.slice(1);
+            errors.every(function(res) {
+                assert.equal(res.error.code, 'ContainerNotFound');
+                assert.equal(res.error.statusCode, 404);
+            });
             sinon.assert.callCount(testProcessingStub, 1);
             done();
         });
@@ -181,9 +186,12 @@ describe('Dead letter blob processing unit tests.', function() {
                     return callback(null);
                 });
         var dlblob = new AlAzureDlBlob(mock.DEFAULT_FUNCTION_CONTEXT, testProcessingStub);
-        dlblob.processDlBlobs({}, function(err) {
-            assert.equal(err.code, 'ContainerNotFound');
-            assert.equal(err.statusCode, 404);
+        dlblob.processDlBlobs({}, function(err, result) {
+            assert.equal(err, null);
+            result.every(function(res) {
+                assert.equal(res.error.code, 'ContainerNotFound');
+                assert.equal(res.error.statusCode, 404);
+            });
             sinon.assert.callCount(testProcessingStub, 6);
             done();
         });
