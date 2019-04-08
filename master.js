@@ -11,8 +11,7 @@
 
 const async = require('async');
 
-const azureRest = require('ms-rest-azure');
-const azureArmClient = require('azure-arm-resource').ResourceManagementClient;
+const msRestAzure = require('ms-rest-azure');
 const azureArmWebsite = require('azure-arm-website');
 const fileTokenCache = require('azure/lib/util/fileTokenCache');
 
@@ -108,25 +107,29 @@ class AlAzureMaster {
         this._alDataResidency = alDataResidency ? alDataResidency : process.env.CUSTOMCONNSTR_APP_AL_RESIDENCY;
         
         // Init Azure optional configuration parameters
-        this._clientId = clientId ? clientId : process.env.CUSTOMCONNSTR_APP_CLIENT_ID;
         this._domain = domain ? domain : process.env.APP_TENANT_ID;
-        this._clientSecret = clientSecret ? clientSecret : process.env.CUSTOMCONNSTR_APP_CLIENT_SECRET;
+        this._clientId = clientId ? clientId : 
+            process.env.MSI_SECRET ? process.env.APP_PRINCIPAL_ID : process.env.CUSTOMCONNSTR_APP_CLIENT_ID;
+        this._clientSecret = clientSecret ? clientSecret : 
+            process.env.MSI_SECRET ? 'Managed Service Identity' : process.env.CUSTOMCONNSTR_APP_CLIENT_SECRET;
         this._subscriptionId = subscriptionId ? subscriptionId : process.env.APP_SUBSCRIPTION_ID;
         this._resourceGroup = resourceGroup ? resourceGroup : process.env.APP_RESOURCE_GROUP;
         this._webAppName = webAppName ? webAppName : process.env.WEBSITE_SITE_NAME;
         
         // Init Azure SDK
-        var tokenCache = new fileTokenCache(m_util.getADCacheFilename(
-            'https://management.azure.com',
-            this._clientId,
-            this._domain));
-
-        this._azureCreds = new azureRest.ApplicationTokenCredentials(
-            this._clientId,
-            this._domain,
-            this._clientSecret,
-            { 'tokenCache': tokenCache });
-                
+        if (process.env.MSI_ENDPOINT && process.env.MSI_SECRET) {
+            this._azureCreds = new msRestAzure.MSIAppServiceTokenCredentials();
+        } else {
+            const tokenCache = new fileTokenCache(m_util.getADCacheFilename(
+                'https://management.azure.com',
+                this._clientId,
+                this._domain));
+            this._azureCreds = new msRestAzure.ApplicationTokenCredentials(
+                this._clientId,
+                this._domain,
+                this._clientSecret,
+                { 'tokenCache': tokenCache });
+        }
         this._azureWebsiteClient = new azureArmWebsite(this._azureCreds, this._subscriptionId);
         this._appStats = new AzureWebAppStats(collectorAzureFunNames);
         this._collectionStats = new AzureCollectionStats(azureContext, {outputQueueBinding: OutputStatsBinding});

@@ -36,9 +36,17 @@ class AlAzureUpdater {
         this._webAppName = webAppName ? webAppName : process.env.WEBSITE_SITE_NAME;
     }
     
+    _getAzureCredentials() {
+        if (process.env.MSI_ENDPOINT && process.env.MSI_SECRET) {
+            return new msRestAzure.MSIAppServiceTokenCredentials();
+        } else {
+            return new msRestAzure.ApplicationTokenCredentials(this._clientId, this._domain, this._clientSecret);
+        }
+    }
+    
     syncWebApp(callback) {
-        var credentials = new msRestAzure.ApplicationTokenCredentials(this._clientId, this._domain, this._clientSecret);
-        var webSiteClient = new WebSiteManagement(credentials, this._subscriptionId);
+        const credentials = this._getAzureCredentials();
+        const webSiteClient = new WebSiteManagement(credentials, this._subscriptionId);
         return webSiteClient.webApps.syncRepository(this._resourceGroup, this._webAppName, callback);
     }
 };
