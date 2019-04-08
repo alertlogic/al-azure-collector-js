@@ -172,7 +172,7 @@ describe('Master tests', function() {
                 aimsKeyId: 'aimsKeyId',
                 aimsKeySecret: 'aimsKeySecret',
                 alApiEndpoint: 'alApiEndpoint',
-                alIngestEndpoint: 'alIngestEndpoint',
+                alAzcollectEndpoint: 'alAzcollectEndpoint',
                 alDataResidency: 'default'
             };
             var azureOpts = {
@@ -197,7 +197,77 @@ describe('Master tests', function() {
                 done();
             });
         });
-        
+
+        it('Verify register with MSI', function(done) {
+            // Mock Azure HTTP calls
+            nock('http://127.0.0.1:41963', {'encodedQueryParams':true})
+            .get(/token\/$/, /.*/ )
+            .query(true)
+            .times(5)
+            .reply(200, mock.AZURE_TOKEN_MOCK);
+            
+            nock('https://management.azure.com:443', {'encodedQueryParams':true})
+            .put(/appsettings/, /.*/ )
+            .query(true)
+            .times(4)
+            .reply(200, {});
+            
+            nock('https://management.azure.com:443', {'encodedQueryParams':true})
+            .post(/appsettings/, /.*/ )
+            .query(true)
+            .times(4)
+            .reply(200, {});
+            
+            // Mock Alert Logic HTTP calls
+            fakePost = sinon.stub(alcollector.AlServiceC.prototype, 'post');
+            fakePost.withArgs('/azure/ehub/subscription-id/rg/app-name')
+                .resolves({
+                    source: {
+                        host: {
+                            id: 'new-host-id1'
+                        },
+                        id: 'new-source-id1'
+                    }
+            });
+            
+            var alOpts = {
+                aimsKeyId: 'aimsKeyId',
+                aimsKeySecret: 'aimsKeySecret',
+                alApiEndpoint: 'alApiEndpoint',
+                alDataResidency: 'default'
+            };
+            
+            delete process.env.COLLECTOR_HOST_ID;
+            delete process.env.COLLECTOR_SOURCE_ID;
+            process.env.WEBSITE_SITE_NAME = 'app-name';
+            process.env.APP_SUBSCRIPTION_ID = 'subscription-id';
+            process.env.APP_RESOURCE_GROUP = 'rg';
+            process.env.MSI_SECRET = 'MSI secret';
+            process.env.MSI_ENDPOINT = 'http://127.0.0.1:41963/MSI/token/';
+            process.env.APP_PRINCIPAL_ID = 'msi-principal-id';
+            
+            var master = new AlAzureMaster(mock.DEFAULT_FUNCTION_CONTEXT, 'ehub', '1.0.0', [], [], alOpts);
+            
+            master.register({}, function(err, collectorHostId, collectorSourceId){
+                if (err) console.log(err);
+                assert.equal(collectorHostId, 'new-host-id1');
+                assert.equal(collectorSourceId, 'new-source-id1');
+                const expectedBody = {
+                    body: {
+                        app_tenant_id: 'tenant-id',
+                        client_id: process.env.APP_PRINCIPAL_ID,
+                        client_secret: 'Managed Service Identity',
+                        version: '1.0.0'
+                   }
+                };
+                sinon.assert.calledWith(fakePost, '/azure/ehub/subscription-id/rg/app-name', expectedBody);
+                delete process.env.MSI_SECRET;
+                delete process.env.MSI_ENDPOINT;
+                delete process.env.APP_PRINCIPAL_ID;
+                done();
+            });
+        });
+
         it('Verify register reuse endpoints and collector ids from env', function(done) {
             // Expected Alert Logic parameters
             process.env.WEBSITE_HOSTNAME = 'app-name';
