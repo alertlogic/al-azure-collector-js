@@ -9,7 +9,7 @@
  */
 'use strict';
 
-const alcollector = require('al-collector-js');
+const alcollector = require('@alertlogic/al-collector-js');
 const AzureCollectionStats = require('./appstats').AzureCollectionStats;
 
 

@@ -11,7 +11,7 @@ const assert = require('assert');
 const sinon = require('sinon');
 const fs = require('fs');
 const nock = require('nock');
-const alcollector = require('al-collector-js');
+const alcollector = require('@alertlogic/al-collector-js');
 
 const AlAzureCollector = require('../collector').AlAzureCollector;
 const mock = require('./mock');

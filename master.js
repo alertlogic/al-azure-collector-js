@@ -15,7 +15,7 @@ const msRestAzure = require('ms-rest-azure');
 const azureArmWebsite = require('azure-arm-website');
 const fileTokenCache = require('azure/lib/util/fileTokenCache');
 
-const alcollector = require('al-collector-js');
+const alcollector = require('@alertlogic/al-collector-js');
 
 const m_util = require('./util');
 const AzureWebAppStats = require('./appstats').AzureWebAppStats;
