@@ -1,17 +1,17 @@
 {
   "name": "@alertlogic/al-azure-collector-js",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Alert Logic Azure Collector Common Library",
   "license": "MIT",
   "repository": {
-      "type": "git",
-      "url": "https://github.com/alertlogic/al-azure-collector-js#npm"
+    "type": "git",
+    "url": "https://github.com/alertlogic/al-azure-collector-js#npm"
   },
   "scripts": {
     "lint": "jshint --show-non-errors --exclude \"./node_modules/*\" **/*.js",
     "test": "JUNIT_REPORT_PATH=./test/report.xml nyc --reporter=cobertura mocha --colors --reporter mocha-jenkins-reporter"
   },
-  "main":"index.js",
+  "main": "index.js",
   "maintainers": [
     {
       "name": "Alert Logic NPM Team",
@@ -28,7 +28,7 @@
     "sinon": "^7.2.3"
   },
   "dependencies": {
-    "al-collector-js": "^1.1.2",
+    "@alertlogic/al-collector-js": "^1.1.2",
     "async": "^2.6.1",
     "azure": "^2.3.1-preview",
     "parse-key-value": "^1.0.0",
