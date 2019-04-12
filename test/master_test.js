@@ -380,6 +380,13 @@ describe('Master tests', function() {
             .times(100)
             .reply(204,'');
             
+            // List blobs
+            nock('https://testappo365.blob.core.windows.net:443', {'encodedQueryParams':true})
+            .get('/alertlogic-dl')
+            .query(true)
+            .times(5)
+            .reply(200, mock.LIST_CONTAINER_BLOBS());
+            
             // Mock Alert Logic HTTP calls
             fakePost = sinon.stub(alcollector.AlServiceC.prototype, 'post').callsFake(
                 function fakeFn(path, extraOptions) {
@@ -402,6 +409,7 @@ describe('Master tests', function() {
             process.env.APP_AZCOLLECT_ENDPOINT = 'existing-azcollect-endpoint';
             process.env.COLLECTOR_HOST_ID = 'existing-host-id';
             process.env.COLLECTOR_SOURCE_ID = 'existing-source-id';
+            process.env.APP_DL_CONTAINER_NAME = 'alertlogic-dl';
             
             // Expected Azure parameters
             process.env.WEBSITE_SITE_NAME = 'kktest11-name';
@@ -434,6 +442,7 @@ describe('Master tests', function() {
                         host_id: 'existing-host-id',
                         source_id: 'existing-source-id',
                         statistics: [{ 'Master': { 'errors': 0, 'invocations': 2 } }, { 'Collector': { 'errors': 1, 'invocations': 10 } }, { 'Updater': { 'errors': 0, 'invocations': 0 } }],
+                        dl_stats: { dl_count: 6, max_dl_size: 4257 },
                         status: 'ok',
                         details: []
                     }
@@ -466,6 +475,7 @@ describe('Master tests', function() {
                         host_id: 'existing-host-id',
                         source_id: 'existing-source-id',
                         statistics: [{ 'Master': { 'errors': 0, 'invocations': 2 } }, { 'Collector': { 'errors': 1, 'invocations': 10 } }, { 'Updater': { 'errors': 0, 'invocations': 0 } }],
+                        dl_stats: { dl_count: 6, max_dl_size: 4257 },
                         status: 'error',
                         details: ['Azure Web Application status is not OK. {\"availabilityState\":\"Limited\"}'],
                         error_code: 'ALAZU00001'
@@ -498,6 +508,7 @@ describe('Master tests', function() {
                         host_id: 'existing-host-id',
                         source_id: 'existing-source-id',
                         statistics: [{ 'Master': { 'errors': 0, 'invocations': 2 } }, { 'Collector': { 'errors': 1, 'invocations': 10 } }, { 'Updater': { 'errors': 0, 'invocations': 0 } }],
+                        dl_stats: { dl_count: 6, max_dl_size: 4257 },
                         status: 'ok',
                         details: []
                     }
@@ -528,6 +539,7 @@ describe('Master tests', function() {
                         host_id: 'existing-host-id',
                         source_id: 'existing-source-id',
                         statistics: [{ 'Master': { 'errors': 0, 'invocations': 2 } }, { 'Collector': { 'errors': 1, 'invocations': 10 } }, { 'Updater': { 'errors': 0, 'invocations': 0 } }],
+                        dl_stats: { dl_count: 6, max_dl_size: 4257 },
                         status: 'error',
                         details: ['Custom Error'],
                         error_code: 'ALAZU000004'
