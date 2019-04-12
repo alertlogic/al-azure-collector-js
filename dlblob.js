@@ -53,7 +53,7 @@ class AlAzureDlBlob {
     };
     
     _findMaxDlBlobSize(dlblobs) {
-        var len = dlblobs.length, max = -Infinity;
+        var len = dlblobs.length, max = 0;
         while (len--) {
             const contentLen = Number(dlblobs[len].contentLength);
             if (contentLen > max) {
