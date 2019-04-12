@@ -52,6 +52,43 @@ class AlAzureDlBlob {
         return this._blobService;
     };
     
+    _findMaxDlBlobSize(dlblobs) {
+        var len = dlblobs.length, max = -Infinity;
+        while (len--) {
+            const contentLen = Number(dlblobs[len].contentLength);
+            if (contentLen > max) {
+                max = contentLen;
+            }
+        }
+        return max;
+    }
+    
+    /**
+     *  @function Retrievs the first page (5000) of dead letter blobs and finds the one with the maximum size.
+     *  
+     *  @param callback
+     *  @returns callback
+     */
+    getDlBlobStats(callback) {
+        var dlblob = this;
+        return dlblob._blobService.listBlobsSegmentedWithPrefix(
+            dlblob._dlContainerName,
+            process.env.WEBSITE_SITE_NAME,
+            null, function(listErr, dlblobList) {
+                if (listErr) {
+                    return callback(listErr);
+                } else {
+                    const dlstats =  {
+                        dl_stats: {
+                            dl_count: dlblobList.entries.length,
+                            max_dl_size: dlblob._findMaxDlBlobSize(dlblobList.entries)
+                        }
+                    };
+                    return callback(null, dlstats);
+                }
+            });
+    };
+    
     processDlBlobs(timer, callback) {
         var dlblob = this;
         const options = {

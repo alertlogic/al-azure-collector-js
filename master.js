@@ -20,6 +20,7 @@ const alcollector = require('@alertlogic/al-collector-js');
 const m_util = require('./util');
 const AzureWebAppStats = require('./appstats').AzureWebAppStats;
 const AzureCollectionStats = require('./appstats').AzureCollectionStats;
+const AlAzureDlBlob = require('./dlblob').AlAzureDlBlob;
 
 const MASTER_RETRY_OPTS = {
     factor: 2,
@@ -133,6 +134,7 @@ class AlAzureMaster {
         this._azureWebsiteClient = new azureArmWebsite(this._azureCreds, this._subscriptionId);
         this._appStats = new AzureWebAppStats(collectorAzureFunNames);
         this._collectionStats = new AzureCollectionStats(azureContext, {outputQueueBinding: OutputStatsBinding});
+        this._alAzureDlBlob = new AlAzureDlBlob(azureContext, null);
     }
     
     getApplicationTokenCredentials(){
@@ -330,6 +332,9 @@ class AlAzureMaster {
                     }
                     return callback(err, result);
                 });
+            }),
+            async.reflect(function(callback) {
+                return master._alAzureDlBlob.getDlBlobStats(callback);
             })
         ],
         function(err, results){
