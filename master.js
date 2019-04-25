@@ -335,7 +335,7 @@ class AlAzureMaster {
             }),
             async.reflect(function(callback) {
                 return master._alAzureDlBlob.getDlBlobStats(function(err, dlstats) {
-                    if (err && err.statusCode === 404) {
+                    if (err && err.statusCode === 404 && !process.env.APP_DL_CONTAINER_NAME) {
                         return callback(null, {});
                     } else {
                         return callback(err, dlstats);

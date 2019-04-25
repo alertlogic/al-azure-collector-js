@@ -383,7 +383,7 @@ describe('Master tests', function() {
             
             // List blobs
             nock('https://testappo365.blob.core.windows.net:443', {'encodedQueryParams':true})
-            .get('/alertlogic-dl')
+            .get('/alertlogic-dl-test')
             .query(true)
             .times(5)
             .reply(200, mock.LIST_CONTAINER_BLOBS());
@@ -410,7 +410,7 @@ describe('Master tests', function() {
             process.env.APP_AZCOLLECT_ENDPOINT = 'existing-azcollect-endpoint';
             process.env.COLLECTOR_HOST_ID = 'existing-host-id';
             process.env.COLLECTOR_SOURCE_ID = 'existing-source-id';
-            process.env.APP_DL_CONTAINER_NAME = 'alertlogic-dl';
+            process.env.APP_DL_CONTAINER_NAME = 'alertlogic-dl-test';
             
             // Expected Azure parameters
             process.env.WEBSITE_SITE_NAME = 'kktest11-name';
@@ -457,9 +457,11 @@ describe('Master tests', function() {
         });
         
         it('Verify checkin ok, no DL stats', function(done) {
-            process.env.APP_DL_CONTAINER_NAME = 'alertlogic-dl-test';
+            const storedDlName = process.env.APP_DL_CONTAINER_NAME;
+            delete process.env.APP_DL_CONTAINER_NAME;
+            
             nock('https://testappo365.blob.core.windows.net:443', {'encodedQueryParams':true})
-            .get('/alertlogic-dl-test')
+            .get('/alertlogic-dl')
             .query(true)
             .times(5)
             .reply(404, mock.CONTAINER_NOT_FOUND);
@@ -467,6 +469,7 @@ describe('Master tests', function() {
             var master = new AlAzureMaster(mock.DEFAULT_FUNCTION_CONTEXT, 'ehub', '1.0.0');
             master.checkin('2017-12-22T14:31:39', function(err, resp){
                 if (err) console.log(err);
+                process.env.APP_DL_CONTAINER_NAME = storedDlName;
                 let cs = new CollectionStatRecord();
                 cs.log.bytes = 10;
                 cs.log.events = 15;
