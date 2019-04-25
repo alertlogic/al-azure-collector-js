@@ -15,6 +15,7 @@ const alcollector = require('@alertlogic/al-collector-js');
 
 const AlAzureMaster = require('../master').AlAzureMaster;
 const AzureWebAppStats = require('../appstats').AzureWebAppStats;
+const CollectionStatRecord = require('../appstats').CollectionStatRecord;
 const mock = require('./mock');
 
 describe('Master tests', function() {
@@ -450,6 +451,46 @@ describe('Master tests', function() {
                 const expectedUrl = '/azure/ehub/checkin/subscription-id/kktest11-rg/kktest11-name';
                 fakeStats.restore();
                 sinon.assert.calledWithMatch(fakePost, expectedUrl, expectedCheckin);
+                assert.equal(resp, mock.CHECKIN_RESPONSE_OK);
+                done();
+            });
+        });
+        
+        it('Verify checkin ok, no DL stats', function(done) {
+            const storedDlName = process.env.APP_DL_CONTAINER_NAME;
+            delete process.env.APP_DL_CONTAINER_NAME;
+            
+            // This should not be called
+            nock('https://testappo365.blob.core.windows.net:443', {'encodedQueryParams':true})
+            .get('/alertlogic-dl')
+            .query(true)
+            .times(5)
+            .reply(404, mock.CONTAINER_NOT_FOUND);
+            
+            var master = new AlAzureMaster(mock.DEFAULT_FUNCTION_CONTEXT, 'ehub', '1.0.0');
+            master.checkin('2017-12-22T14:31:39', function(err, resp){
+                if (err) console.log(err);
+                process.env.APP_DL_CONTAINER_NAME = storedDlName;
+                let cs = new CollectionStatRecord();
+                cs.log.bytes = 10;
+                cs.log.events = 15;
+                const expectedCheckin = { 
+                    body: {
+                        version: '1.0.0',
+                        app_tenant_id: 'tenant-id',
+                        collection_stats: cs,
+                        host_id: 'existing-host-id',
+                        source_id: 'existing-source-id',
+                        statistics: [{ 'Master': { 'errors': 0, 'invocations': 2 } }, { 'Collector': { 'errors': 1, 'invocations': 10 } }, { 'Updater': { 'errors': 0, 'invocations': 0 } }],
+                        // No DL stats
+                        //dl_stats: { dl_count: 6, max_dl_size: 4257 },
+                        status: 'ok',
+                        details: []
+                    }
+                };
+                const expectedUrl = '/azure/ehub/checkin/subscription-id/kktest11-rg/kktest11-name';
+                fakeStats.restore();
+                sinon.assert.calledWith(fakePost, expectedUrl, expectedCheckin);
                 assert.equal(resp, mock.CHECKIN_RESPONSE_OK);
                 done();
             });

@@ -334,7 +334,11 @@ class AlAzureMaster {
                 });
             }),
             async.reflect(function(callback) {
-                return master._alAzureDlBlob.getDlBlobStats(callback);
+                if (process.env.APP_DL_CONTAINER_NAME) {
+                    return master._alAzureDlBlob.getDlBlobStats(callback);
+                } else {
+                    return callback(null, {});
+                }
             })
         ],
         function(err, results){

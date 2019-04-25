@@ -64,7 +64,7 @@ class AlAzureDlBlob {
     }
     
     /**
-     *  @function Retrievs the first page (5000) of dead letter blobs and finds the one with the maximum size.
+     *  @function Retrieves the first page (5000) of dead letter blobs and finds the one with the maximum size.
      *  
      *  @param callback
      *  @returns callback
