@@ -383,7 +383,7 @@ describe('Master tests', function() {
             
             // List blobs
             nock('https://testappo365.blob.core.windows.net:443', {'encodedQueryParams':true})
-            .get('/alertlogic-dl-test')
+            .get('/alertlogic-dl')
             .query(true)
             .times(5)
             .reply(200, mock.LIST_CONTAINER_BLOBS());
@@ -410,7 +410,7 @@ describe('Master tests', function() {
             process.env.APP_AZCOLLECT_ENDPOINT = 'existing-azcollect-endpoint';
             process.env.COLLECTOR_HOST_ID = 'existing-host-id';
             process.env.COLLECTOR_SOURCE_ID = 'existing-source-id';
-            process.env.APP_DL_CONTAINER_NAME = 'alertlogic-dl-test';
+            process.env.APP_DL_CONTAINER_NAME = 'alertlogic-dl';
             
             // Expected Azure parameters
             process.env.WEBSITE_SITE_NAME = 'kktest11-name';
