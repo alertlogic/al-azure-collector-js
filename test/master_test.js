@@ -460,6 +460,7 @@ describe('Master tests', function() {
             const storedDlName = process.env.APP_DL_CONTAINER_NAME;
             delete process.env.APP_DL_CONTAINER_NAME;
             
+            // This should not be called
             nock('https://testappo365.blob.core.windows.net:443', {'encodedQueryParams':true})
             .get('/alertlogic-dl')
             .query(true)
