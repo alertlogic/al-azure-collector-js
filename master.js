@@ -366,7 +366,16 @@ class AlAzureMaster {
             var status;
             if (errStatus) {
                 master._azureContext.log.warn('Health check failed with',  errStatus.details);
-                status = errStatus;
+                if(typeof errStatus === 'string'){
+                    status = {
+                        status: 'error',
+                        details: [ errStatus ],
+                        // Set error code to code for custom health check error
+                        error_code: 'ALAZU000004'
+                    };
+                } else {
+                    status = errStatus;
+                }
             } else {
                 status = {
                     status: 'ok',
