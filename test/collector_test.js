@@ -64,8 +64,8 @@ describe('Collector tests', function() {
         
         fakePost = sinon.stub(alcollector.AlServiceC.prototype, 'post').callsFake(
             function fakeFn(path, extraOptions) {
-                assert.equal(extraOptions.headers['Content-Type'], 'alertlogic.com/pass-through');
-                assert.equal(path, '/data/aicspmsgs');
+                assert.equal(extraOptions.headers['Content-Type'], 'alertlogic.com/lm3-protobuf');
+                assert.equal(path, '/data/logmsgs');
                 assert.equal(expectedBody, extraOptions.body.toString('base64'));
                 
                 return new Promise(function(resolve, reject){
@@ -106,8 +106,8 @@ describe('Collector tests', function() {
         
         fakePost = sinon.stub(alcollector.AlServiceC.prototype, 'post').callsFake(
             function fakeFn(path, extraOptions) {
-                assert.equal(extraOptions.headers['Content-Type'], 'alertlogic.com/pass-through');
-                assert.equal(path, '/data/aicspmsgs');
+                assert.equal(extraOptions.headers['Content-Type'], 'alertlogic.com/lm3-protobuf');
+                assert.equal(path, '/data/logmsgs');
                 assert.equal(expectedBody, extraOptions.body.toString('base64'));
                 
                 return new Promise(function(resolve, reject){
