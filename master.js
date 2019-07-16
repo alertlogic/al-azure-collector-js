@@ -21,6 +21,7 @@ const m_util = require('./util');
 const AzureWebAppStats = require('./appstats').AzureWebAppStats;
 const AzureCollectionStats = require('./appstats').AzureCollectionStats;
 const AlAzureDlBlob = require('./dlblob').AlAzureDlBlob;
+const AlAzureUpdater = require('./updater').AlAzureUpdater;
 
 const MASTER_RETRY_OPTS = {
     factor: 2,
@@ -498,7 +499,19 @@ class AlAzureMaster {
                 checkinParts[1]);
             master._azcollectc.checkin(checkinBody)
                 .then(resp => {
-                    return callback(null, resp);
+                    if(resp){
+                        const updater = new AlAzureUpdater();
+                        updater.syncWebApp(function(syncError){
+                            if(syncError){
+                                return callback(`Forced update application sync failed: ${syncError}`);
+                            } else {
+                                context.log.info('Forced update application sync OK');
+                                return callback(null, {});
+                            }
+                        });
+                    } else {
+                        return callback(null, resp);
+                    }
                 })
                 .catch(err => {
                     return callback(err);
