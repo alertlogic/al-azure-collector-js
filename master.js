@@ -499,14 +499,14 @@ class AlAzureMaster {
                 checkinParts[1]);
             master._azcollectc.checkin(checkinBody)
                 .then(resp => {
-                    if(resp){
+                    if(resp && resp.force_update === true){
                         const updater = new AlAzureUpdater();
                         updater.syncWebApp(function(syncError){
                             if(syncError){
                                 return callback(`Forced update application sync failed: ${syncError}`);
                             } else {
                                 context.log.info('Forced update application sync OK');
-                                return callback(null, {});
+                                return callback(null, resp);
                             }
                         });
                     } else {
