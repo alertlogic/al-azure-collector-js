@@ -8,7 +8,6 @@ node_modules:
 	npm install
 
 compile: deps
-	npm run lint
 
 test: compile
 	npm run test
