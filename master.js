@@ -505,7 +505,7 @@ class AlAzureMaster {
                             if(syncError){
                                 return callback(`Forced update application sync failed: ${syncError}`);
                             } else {
-                                this.azureContext.log.info('Forced update application sync OK');
+                                master._azureContext.log.info('Forced update application sync OK');
                                 return callback(null, resp);
                             }
                         });

@@ -16,6 +16,7 @@ const alcollector = require('@alertlogic/al-collector-js');
 const AlAzureMaster = require('../master').AlAzureMaster;
 const AzureWebAppStats = require('../appstats').AzureWebAppStats;
 const CollectionStatRecord = require('../appstats').CollectionStatRecord;
+const AlAzureUpdater = require('../updater').AlAzureUpdater;
 const mock = require('./mock');
 
 describe('Master tests', function() {
@@ -456,6 +457,51 @@ describe('Master tests', function() {
             });
         });
         
+        it('Verify checkin ok with force update', function(done) {
+            var syncMock = nock('https://management.azure.com:443', {'encodedQueryParams':true})
+            .post(/sync/, /.*/ )
+            .query(true)
+            .reply(200, '');
+            var azureOpts = {
+                clientId: 'client-id',
+                domain: 'tenant-id', 
+                clientSecret: 'client-secret',
+                subscriptionId: 'subscription-id',
+                resourceGroup: 'rg',
+                webAppName: 'app-name'
+            };
+            const forceUpdateRes = {force_update: true};
+            fakePost.restore();
+            fakePost = sinon.stub(alcollector.AlServiceC.prototype, 'post').callsFake(
+                function fakeFn(path, extraOptions) {
+                    return new Promise(function(resolve, reject){
+                        return resolve(forceUpdateRes);
+                    });
+                });
+            var master = new AlAzureMaster(mock.DEFAULT_FUNCTION_CONTEXT, 'ehub', '1.0.0');
+            master.checkin('2017-12-22T14:31:39', function(err, resp){
+                if (err) console.log(err);
+                const expectedCheckin = {
+                    body: {
+                        version: '1.0.0',
+                        app_tenant_id: 'tenant-id',
+                        collection_stats: { 'log': { 'bytes': 10, 'events': 15 } },
+                        host_id: 'existing-host-id',
+                        source_id: 'existing-source-id',
+                        statistics: [{ 'Master': { 'errors': 0, 'invocations': 2 } }, { 'Collector': { 'errors': 1, 'invocations': 10 } }, { 'Updater': { 'errors': 0, 'invocations': 0 } }],
+                        dl_stats: { dl_count: 6, max_dl_size: 4257 },
+                        status: 'ok',
+                        details: []
+                    }
+                };
+                const expectedUrl = '/azure/ehub/checkin/subscription-id/kktest11-rg/kktest11-name';
+                fakeStats.restore();
+                sinon.assert.calledWithMatch(fakePost, expectedUrl, expectedCheckin);
+                assert.equal(resp, forceUpdateRes);
+                done();
+            });
+        });
+
         it('Verify checkin ok, no DL stats', function(done) {
             const storedDlName = process.env.APP_DL_CONTAINER_NAME;
             delete process.env.APP_DL_CONTAINER_NAME;
