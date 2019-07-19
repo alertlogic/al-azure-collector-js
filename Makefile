@@ -1,6 +1,6 @@
-.PHONY: test 
+.PHONY: test
 
-all: test 
+all: test
 
 deps: node_modules
 
@@ -12,7 +12,7 @@ compile: deps
 
 test: compile
 	npm run test
-	
+
 clean:
 	rm -rf node_modules
 	rm -f package-lock.json
