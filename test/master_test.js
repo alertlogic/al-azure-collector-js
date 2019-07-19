@@ -495,9 +495,9 @@ describe('Master tests', function() {
                     }
                 };
                 const expectedUrl = '/azure/ehub/checkin/subscription-id/kktest11-rg/kktest11-name';
-                fakeStats.restore();
                 sinon.assert.calledWithMatch(fakePost, expectedUrl, expectedCheckin);
                 assert.equal(resp, forceUpdateRes);
+                assert.ok(syncMock);
                 done();
             });
         });
