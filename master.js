@@ -11,8 +11,8 @@
 
 const async = require('async');
 
-const {MSIAppServiceTokenCredentials, ApplicationTokenCredentials} = require('ms-rest-azure');
-const {WebSiteManagementClient} = require('azure-arm-website');
+const {MSIAppServiceTokenCredentials, ApplicationTokenCredentials} = require('@azure/ms-rest-nodeauth');
+const {WebSiteManagementClient} = require('@azure/arm-appservice');
 
 const alcollector = require('@alertlogic/al-collector-js');
 
@@ -129,11 +129,7 @@ class AlAzureMaster {
             };
             this._azureCreds = new MSIAppServiceTokenCredentials(options);
         } else {
-            this._azureCreds = new ApplicationTokenCredentials(
-                this._clientId,
-                this._domain,
-                this._clientSecret
-            );
+            this._azureCreds = new ApplicationTokenCredentials(this._clientId, this._clientSecret, this._domain);
         }
 
         this._azureWebsiteClient = new WebSiteManagementClient(this._azureCreds, this._subscriptionId);
@@ -174,7 +170,7 @@ class AlAzureMaster {
     }
 
     getAppSettings(callback) {
-        return this._azureWebsiteClient.webApps.listApplicationSettings(
+        this._azureWebsiteClient.webApps.listApplicationSettings(
             this._resourceGroup, this._webAppName, null,
             function(err, result, request, response) {
                 if (err) {
@@ -208,7 +204,7 @@ class AlAzureMaster {
     updateAlEndpoints(force, callback) {
         var master = this;
         if (!force && process.env.APP_INGEST_ENDPOINT && process.env.APP_AZCOLLECT_ENDPOINT) {
-            master._azureContext.log.verbose('Reuse Ingest endpoint', process.env.APP_INGEST_ENDPOINT);
+            master._azureContext.log.verbose('rReuse Ingest endpoint', process.env.APP_INGEST_ENDPOINT);
             master._azureContext.log.verbose('Reuse Azcollect endpoint', process.env.APP_AZCOLLECT_ENDPOINT);
             return callback(null);
         } else {
