@@ -40,7 +40,6 @@ describe('Master tests', function() {
     });
     beforeEach(function(){
         nock('https://management.azure.com:443', {'encodedQueryParams':true})
-        .log(console.log)
         .get(/subscriptions$/, /.*/)
         .query(true)
         .times(10)
@@ -73,7 +72,6 @@ describe('Master tests', function() {
         it('Verify collector register with endpoints update', function(done) {
             // Mock Azure HTTP calls
             nock('https://login.microsoftonline.com:443', {'encodedQueryParams':true})
-            .log(console.log)
             .post(/token$/, /.*/)
             .query(true)
             .times(10)
