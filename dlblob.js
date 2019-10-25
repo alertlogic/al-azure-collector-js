@@ -21,7 +21,7 @@
 'use strict';
 
 const async = require('async');
-const azure = require('azure');
+const azure = require('azure-storage');
 
 const CONCURRENT_BLOB_PROCESS_NUM = 20;
 const LIST_BLOB_PAGE_SIZE = 100;

@@ -9,8 +9,9 @@
  */
 'use strict';
 
-const msRestAzure = require('ms-rest-azure');
-const WebSiteManagement = require('azure-arm-website');
+const {WebSiteManagementClient} = require('@azure/arm-appservice');
+const {MSIAppServiceTokenCredentials, ApplicationTokenCredentials} = require('@azure/ms-rest-nodeauth');
+const WebSiteManagement = require('@azure/arm-appservice');
 
 /**
  * @class
@@ -38,18 +39,22 @@ class AlAzureUpdater {
     
     _getAzureCredentials() {
         if (process.env.MSI_ENDPOINT && process.env.MSI_SECRET) {
-            return new msRestAzure.MSIAppServiceTokenCredentials();
+            const options = {
+                msiEndpoint: process.env.MSI_ENDPOINT,
+                msiSecret: process.env.MSI_SECRET,
+            };
+            return new MSIAppServiceTokenCredentials(options);
         } else {
-            return new msRestAzure.ApplicationTokenCredentials(this._clientId, this._domain, this._clientSecret);
+            return new ApplicationTokenCredentials(this._clientId, this._domain, this._clientSecret);
         }
     }
     
     syncWebApp(callback) {
         const credentials = this._getAzureCredentials();
-        const webSiteClient = new WebSiteManagement(credentials, this._subscriptionId);
+        const webSiteClient = new WebSiteManagementClient(credentials, this._subscriptionId);
         return webSiteClient.webApps.syncRepository(this._resourceGroup, this._webAppName, callback);
     }
-};
+}
 module.exports = {
     AlAzureUpdater: AlAzureUpdater
 };

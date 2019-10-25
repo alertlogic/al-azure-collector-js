@@ -12,6 +12,7 @@ const sinon = require('sinon');
 const nock = require('nock');
 const fs = require('fs');
 const alcollector = require('@alertlogic/al-collector-js');
+const nodeAuth = require('@azure/ms-rest-nodeauth');
 
 const AlAzureMaster = require('../master').AlAzureMaster;
 const AzureWebAppStats = require('../appstats').AzureWebAppStats;
@@ -38,6 +39,19 @@ describe('Master tests', function() {
         nock.restore();
     });
     beforeEach(function(){
+        nock('https://management.azure.com:443', {'encodedQueryParams':true})
+        .log(console.log)
+        .get(/subscriptions$/, /.*/)
+        .query(true)
+        .times(10)
+        .reply(200, mock.subscriptionsResponse);
+
+        nock('http://127.0.0.1:41963', {'encodedQueryParams':true})
+        .get(/MSI/, /.*/ )
+        .query(true)
+        .times(5)
+        .reply(200, mock.AZURE_TOKEN_MOCK);
+
         fakeAuth = sinon.stub(alcollector.AimsC.prototype, 'authenticate').callsFake(
             function fakeFn() {
                 return new Promise(function(resolve, reject) {
@@ -59,23 +73,30 @@ describe('Master tests', function() {
         it('Verify collector register with endpoints update', function(done) {
             // Mock Azure HTTP calls
             nock('https://login.microsoftonline.com:443', {'encodedQueryParams':true})
-            .post(/token$/, /.*/ )
+            .log(console.log)
+            .post(/token$/, /.*/)
             .query(true)
-            .times(5)
+            .times(10)
             .reply(200, mock.AZURE_TOKEN_MOCK);
-            
-            nock('https://management.azure.com:443', {'encodedQueryParams':true})
-            .put(/appsettings/, /.*/ )
-            .query(true)
-            .times(2)
-            .reply(200, {});
             
             nock('https://management.azure.com:443', {'encodedQueryParams':true})
             .post(/appsettings/, /.*/ )
             .query(true)
             .times(2)
             .reply(200, {});
-            
+
+            nock('https://management.azure.com:443', {'encodedQueryParams':true})
+            .get(/appsettings/, /.*/ )
+            .query(true)
+            .times(2)
+            .reply(200, {});
+
+            nock('https://management.azure.com:443', {'encodedQueryParams':true})
+            .put(/appsettings/, /.*/ )
+            .query(true)
+            .times(2)
+            .reply(200, {});
+
             // Mock Alert Logic HTTP calls
             fakePost = sinon.stub(alcollector.AlServiceC.prototype, 'post');
             fakePost.withArgs('/azure/ehub/subscription-id/kktest11-rg/kktest11-name')
@@ -118,8 +139,8 @@ describe('Master tests', function() {
             process.env.AzureWebJobsStorage = 'DefaultEndpointsProtocol=https;AccountName=testappo365;AccountKey=S0meKey+';
             
             var master = new AlAzureMaster(mock.DEFAULT_FUNCTION_CONTEXT, 'ehub', '1.0.0');
-            
             master.register({}, function(err, collectorHostId, collectorSourceId){
+                console.log('register callback called');
                 if (err) console.log(err);
                 assert.equal(process.env.APP_INGEST_ENDPOINT, 'new-ingest-endpoint');
                 assert.equal(process.env.APP_AZCOLLECT_ENDPOINT, 'new-azcollect-endpoint');
@@ -141,7 +162,7 @@ describe('Master tests', function() {
         it('Verify register with custom parameters, no endpoints updates', function(done) {
             // Mock Azure HTTP calls
             nock('https://login.microsoftonline.com:443', {'encodedQueryParams':true})
-            .post(/token$/, /.*/ )
+            .post(/token/, /.*/ )
             .query(true)
             .times(5)
             .reply(200, mock.AZURE_TOKEN_MOCK);
@@ -202,12 +223,6 @@ describe('Master tests', function() {
 
         it('Verify register with MSI', function(done) {
             // Mock Azure HTTP calls
-            nock('http://127.0.0.1:41963', {'encodedQueryParams':true})
-            .get(/token\/$/, /.*/ )
-            .query(true)
-            .times(5)
-            .reply(200, mock.AZURE_TOKEN_MOCK);
-            
             nock('https://management.azure.com:443', {'encodedQueryParams':true})
             .put(/appsettings/, /.*/ )
             .query(true)
@@ -347,7 +362,7 @@ describe('Master tests', function() {
         beforeEach(function() {
             // Mock Azure HTTP calls
             nock('https://login.microsoftonline.com:443', {'encodedQueryParams':true})
-            .post(/token$/, /.*/ )
+            .post(/token/, /.*/ )
             .query(true)
             .times(100)
             .reply(200, mock.AZURE_TOKEN_MOCK);
