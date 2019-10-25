@@ -40,7 +40,6 @@ describe('Master tests', function() {
     });
     beforeEach(function(){
         nock('https://management.azure.com:443', {'encodedQueryParams':true})
-        .log(console.log)
         .get(/subscriptions$/, /.*/)
         .query(true)
         .times(10)
