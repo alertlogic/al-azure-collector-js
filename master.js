@@ -170,7 +170,7 @@ class AlAzureMaster {
     }
 
     getAppSettings(callback) {
-        this._azureWebsiteClient.webApps.listApplicationSettings(
+        return this._azureWebsiteClient.webApps.listApplicationSettings(
             this._resourceGroup, this._webAppName, null,
             function(err, result, request, response) {
                 if (err) {
@@ -204,7 +204,7 @@ class AlAzureMaster {
     updateAlEndpoints(force, callback) {
         var master = this;
         if (!force && process.env.APP_INGEST_ENDPOINT && process.env.APP_AZCOLLECT_ENDPOINT) {
-            master._azureContext.log.verbose('rReuse Ingest endpoint', process.env.APP_INGEST_ENDPOINT);
+            master._azureContext.log.verbose('Reuse Ingest endpoint', process.env.APP_INGEST_ENDPOINT);
             master._azureContext.log.verbose('Reuse Azcollect endpoint', process.env.APP_AZCOLLECT_ENDPOINT);
             return callback(null);
         } else {
