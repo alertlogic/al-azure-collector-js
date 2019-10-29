@@ -458,51 +458,6 @@ const GET_BLOB_CONTENT_TEXT = [{
 
 const CONTAINER_NOT_FOUND = "﻿<?xml version=\"1.0\" encoding=\"utf-8\"?><Error><Code>ContainerNotFound</Code><Message>The specified container does not exist.\nRequestId:3d918968-601e-012a-452a-b7aebb000000\nTime:2019-01-28T16:59:40.0095030Z</Message></Error>";
 
-const subscriptionsResponse = {
-  "value": [
-    {
-      "id": "/subscriptions/291bba3f-e0a5-47bc-a099-3bdcb2a50a05",
-      "subscriptionId": "291bba3f-e0a5-47bc-a099-3bdcb2a50a05",
-      "tenantId": "31c75423-32d6-4322-88b7-c478bdde4858",
-      "displayName": "Example Subscription",
-      "state": "Enabled",
-      "subscriptionPolicies": {
-        "locationPlacementId": "Internal_2014-09-01",
-        "quotaId": "Internal_2014-09-01",
-        "spendingLimit": "Off"
-      },
-      "authorizationSource": "RoleBased",
-      "managedByTenants": [
-        {
-          "tenantId": "8f70baf1-1f6e-46a2-a1ff-238dac1ebfb7"
-        }
-      ]
-    },
-    {
-      "id": "/subscriptions/72ac930a-f34e-42d8-b06d-dc2a9e12ed71",
-      "subscriptionId": "72ac930a-f34e-42d8-b06d-dc2a9e12ed71",
-      "tenantId": "2a0ff0de-96b2-4859-bb7c-a430d07a3e0c",
-      "displayName": "Example Subscription2",
-      "state": "Enabled",
-      "subscriptionPolicies": {
-        "locationPlacementId": "Internal_2014-09-01",
-        "quotaId": "Internal_2014-09-01",
-        "spendingLimit": "Off"
-      },
-      "authorizationSource": "RoleBased",
-      "managedByTenants": [
-        {
-          "tenantId": "8f70baf1-1f6e-46a2-a1ff-238dac1ebfb7"
-        },
-        {
-          "tenantId": "f7fb6af2-321d-47c8-9c0f-b0239eaad39a"
-        }
-      ]
-    }
-  ],
-  "nextLink": ""
-}
-
 module.exports = {
     AZURE_TOKEN_MOCK: AZURE_TOKEN_MOCK,
     AL_CID: AL_CID,
@@ -528,7 +483,6 @@ module.exports = {
     statsQueue403Headers: statsQueue403Headers,
     statsQueue404: statsQueue404,
     statsQueue404Headers: statsQueue404Headers,
-    subscriptionsResponse: subscriptionsResponse,
     LIST_CONTAINER_BLOBS: LIST_CONTAINER_BLOBS,
     GET_BLOB_CONTENT_TEXT: GET_BLOB_CONTENT_TEXT,
     CONTAINER_NOT_FOUND: CONTAINER_NOT_FOUND
