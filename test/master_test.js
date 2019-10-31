@@ -12,7 +12,7 @@ const sinon = require('sinon');
 const nock = require('nock');
 const fs = require('fs');
 const alcollector = require('@alertlogic/al-collector-js');
-const nodeAuth = require('@azure/ms-rest-nodeauth');
+const nodeAuth = require('ms-rest-azure');
 
 const AlAzureMaster = require('../master').AlAzureMaster;
 const AzureWebAppStats = require('../appstats').AzureWebAppStats;

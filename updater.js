@@ -9,9 +9,8 @@
  */
 'use strict';
 
-const {WebSiteManagementClient} = require('@azure/arm-appservice');
-const {MSIAppServiceTokenCredentials, ApplicationTokenCredentials} = require('@azure/ms-rest-nodeauth');
-const WebSiteManagement = require('@azure/arm-appservice');
+const {WebSiteManagementClient} = require('azure-arm-website');
+const {MSIAppServiceTokenCredentials, ApplicationTokenCredentials} = require('ms-rest-azure');
 
 /**
  * @class

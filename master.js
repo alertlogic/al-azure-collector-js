@@ -11,8 +11,8 @@
 
 const async = require('async');
 
-const {MSIAppServiceTokenCredentials, ApplicationTokenCredentials} = require('@azure/ms-rest-nodeauth');
-const {WebSiteManagementClient} = require('@azure/arm-appservice');
+const {MSIAppServiceTokenCredentials, ApplicationTokenCredentials} = require('ms-rest-azure');
+const {WebSiteManagementClient} = require('azure-arm-website');
 
 const alcollector = require('@alertlogic/al-collector-js');
 
