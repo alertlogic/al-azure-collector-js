@@ -279,6 +279,7 @@ class AlAzureMaster {
             this._resourceGroup,
             this._webAppName,
             function(err, status) {
+                master._azureContext.log.warn('getAppStats call results', err, status);
             if (err) {
                 return callback(err);
             } else {
