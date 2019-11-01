@@ -491,6 +491,10 @@ class AlAzureMaster {
             }
         ],
         function(err, checkinParts) {
+            if(err){
+                master._azureContext.log.info('error getting health checks or stats', err);
+                return callback(err);
+            }
             const checkinBody = Object.assign(
                 master.getConfigAttrs(),
                 master.getCollectorIds(),
