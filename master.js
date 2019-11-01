@@ -364,6 +364,7 @@ class AlAzureMaster {
         ].concat(master._getCustomHealthChecks()),
         function(errStatus) {
             var status;
+            master._azureContext.log.warn('Health check error status',  errStatus);
             if (errStatus) {
                 if(typeof errStatus === 'string'){
                     master._azureContext.log.warn('Health check failed with: ',  errStatus);
