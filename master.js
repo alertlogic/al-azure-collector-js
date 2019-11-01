@@ -279,7 +279,6 @@ class AlAzureMaster {
             this._resourceGroup,
             this._webAppName,
             function(err, status) {
-                master._azureContext.log.warn('getAppStats call results', err, status);
             if (err) {
                 return callback(err);
             } else {
@@ -364,7 +363,6 @@ class AlAzureMaster {
         ].concat(master._getCustomHealthChecks()),
         function(errStatus) {
             var status;
-            master._azureContext.log.warn('Health check error status',  errStatus);
             if (errStatus) {
                 if(typeof errStatus === 'string'){
                     master._azureContext.log.warn('Health check failed with: ',  errStatus);
@@ -493,7 +491,6 @@ class AlAzureMaster {
         ],
         function(err, checkinParts) {
             if(err){
-                master._azureContext.log.info('error getting health checks or stats', err);
                 return callback(err);
             }
             const checkinBody = Object.assign(
