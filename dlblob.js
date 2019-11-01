@@ -21,7 +21,7 @@
 'use strict';
 
 const async = require('async');
-const azure = require('azure-storage');
+const azureStorage = require('azure-storage');
 
 const CONCURRENT_BLOB_PROCESS_NUM = 20;
 const LIST_BLOB_PAGE_SIZE = 100;
@@ -40,7 +40,7 @@ const DEFAULT_DL_CONTAINER_NAME = 'alertlogic-dl';
 class AlAzureDlBlob {
     constructor(context, processCallback) {
         this._context = context;
-        this._blobService = azure.createBlobService(process.env.AzureWebJobsStorage);
+        this._blobService = azureStorage.createBlobService(process.env.AzureWebJobsStorage);
         this._processCallback = processCallback;
         this._listPageSize = process.env.DL_BLOB_PAGE_SIZE ? 
                 parseInt(process.env.DL_BLOB_PAGE_SIZE) : LIST_BLOB_PAGE_SIZE;
