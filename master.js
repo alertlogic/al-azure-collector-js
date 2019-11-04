@@ -17,7 +17,6 @@ const {WebSiteManagementClient} = require('azure-arm-website');
 const alcollector = require('@alertlogic/al-collector-js');
 
 const m_util = require('./util');
-const fileTokenCache = require('./util/fileTokenCache');
 const AzureWebAppStats = require('./appstats').AzureWebAppStats;
 const AzureCollectionStats = require('./appstats').AzureCollectionStats;
 const AlAzureDlBlob = require('./dlblob').AlAzureDlBlob;
@@ -130,15 +129,10 @@ class AlAzureMaster {
             };
             this._azureCreds = new MSIAppServiceTokenCredentials(options);
         } else {
-            const tokenCache = new fileTokenCache(m_util.getADCacheFilename(
-                'https://management.azure.com',
-                this._clientId,
-                this._domain));
             this._azureCreds = new ApplicationTokenCredentials(
                 this._clientId,
                 this._domain,
-                this._clientSecret,
-                { 'tokenCache': tokenCache }
+                this._clientSecret
             );
         }
 
