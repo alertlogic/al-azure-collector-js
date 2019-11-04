@@ -11,9 +11,8 @@
 
 const async = require('async');
 
-const msRestAzure = require('ms-rest-azure');
-const azureArmWebsite = require('azure-arm-website');
-const fileTokenCache = require('azure/lib/util/fileTokenCache');
+const {MSIAppServiceTokenCredentials, ApplicationTokenCredentials} = require('ms-rest-azure');
+const {WebSiteManagementClient} = require('azure-arm-website');
 
 const alcollector = require('@alertlogic/al-collector-js');
 
@@ -118,26 +117,29 @@ class AlAzureMaster {
         this._resourceGroup = resourceGroup ? resourceGroup : process.env.APP_RESOURCE_GROUP;
         this._webAppName = webAppName ? webAppName : process.env.WEBSITE_SITE_NAME;
         
-        // Init Azure SDK
-        if (process.env.MSI_ENDPOINT && process.env.MSI_SECRET) {
-            this._azureCreds = new msRestAzure.MSIAppServiceTokenCredentials();
-        } else {
-            const tokenCache = new fileTokenCache(m_util.getADCacheFilename(
-                'https://management.azure.com',
-                this._clientId,
-                this._domain));
-            this._azureCreds = new msRestAzure.ApplicationTokenCredentials(
-                this._clientId,
-                this._domain,
-                this._clientSecret,
-                { 'tokenCache': tokenCache });
-        }
-        this._azureWebsiteClient = new azureArmWebsite(this._azureCreds, this._subscriptionId);
         this._appStats = new AzureWebAppStats(collectorAzureFunNames);
         this._collectionStats = new AzureCollectionStats(azureContext, {outputQueueBinding: OutputStatsBinding});
         this._alAzureDlBlob = new AlAzureDlBlob(azureContext, null);
+
+        //Initialize new SDK
+        if (process.env.MSI_ENDPOINT && process.env.MSI_SECRET) {
+            const options = {
+                msiEndpoint: process.env.MSI_ENDPOINT,
+                msiSecret: process.env.MSI_SECRET,
+            };
+            this._azureCreds = new MSIAppServiceTokenCredentials(options);
+        } else {
+            this._azureCreds = new ApplicationTokenCredentials(
+                this._clientId,
+                this._domain,
+                this._clientSecret
+            );
+        }
+
+        this._azureWebsiteClient = new WebSiteManagementClient(this._azureCreds, this._subscriptionId);
+
     }
-    
+
     getApplicationTokenCredentials(){
         return this._azureCreds;
     }
@@ -169,7 +171,7 @@ class AlAzureMaster {
             }],
             callback
         );
-    };
+    }
 
     getAppSettings(callback) {
         return this._azureWebsiteClient.webApps.listApplicationSettings(
@@ -180,11 +182,11 @@ class AlAzureMaster {
                 } else {
                     return callback(null, result);
                 }
-            });
-    };
+        });
+    }
 
     setAppSettings(settings, callback) {
-        return this._azureWebsiteClient.webApps.updateApplicationSettings(
+        this._azureWebsiteClient.webApps.updateApplicationSettings(
             this._resourceGroup, this._webAppName, settings, null,
             function(err, result, request, response) {
                 if (err) {
@@ -192,8 +194,8 @@ class AlAzureMaster {
                 } else {
                     return callback(null);
                 }
-            });
-    };
+        });
+    }
     
     /**
      *  @function updateAlEndpoints - retrieves Alert Logic service endpoints.
@@ -492,6 +494,9 @@ class AlAzureMaster {
             }
         ],
         function(err, checkinParts) {
+            if(err){
+                return callback(err);
+            }
             const checkinBody = Object.assign(
                 master.getConfigAttrs(),
                 master.getCollectorIds(),
