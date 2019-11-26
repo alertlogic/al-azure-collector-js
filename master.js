@@ -11,8 +11,8 @@
 
 const async = require('async');
 
-const {MSIAppServiceTokenCredentials, ApplicationTokenCredentials} = require('ms-rest-azure');
-const {WebSiteManagementClient} = require('azure-arm-website');
+const {MSIAppServiceTokenCredentials, ApplicationTokenCredentials} = require('@azure/ms-rest-nodeauth');
+const {WebSiteManagementClient} = require('@azure/arm-appservice');
 
 const alcollector = require('@alertlogic/al-collector-js');
 
@@ -129,11 +129,7 @@ class AlAzureMaster {
             };
             this._azureCreds = new MSIAppServiceTokenCredentials(options);
         } else {
-            this._azureCreds = new ApplicationTokenCredentials(
-                this._clientId,
-                this._domain,
-                this._clientSecret
-            );
+            this._azureCreds = new ApplicationTokenCredentials(this._clientId, this._domain, this._clientSecret);
         }
 
         this._azureWebsiteClient = new WebSiteManagementClient(this._azureCreds, this._subscriptionId);
