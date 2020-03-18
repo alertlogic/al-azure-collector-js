@@ -9,7 +9,6 @@
  */
 
 const async = require('async');
-const util = require('util');
 const moment = require('moment');
 const parse = require('parse-key-value');
 const azureStorage = require('azure-storage');
@@ -293,7 +292,16 @@ class AzureCollectionStats {
                         return callback();
                     });
                 }, function() {
-                    return processed < metadata.approximateMessageCount;
+                    const cb = arguments[arguments.length - 1];
+                    const args = Array.prototype.slice.call(arguments, 0, arguments.length - 1);
+                    const f = function() {
+                        return processed < metadata.approximateMessageCount;
+                    };
+                    try {
+                        cb(null, f.apply(this, args));
+                    } catch (e) {
+                        cb(e, null);
+                    }
                 }, function() {
                     if (!resultError) {
                         return callback(null, resultStats);
