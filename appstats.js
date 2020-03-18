@@ -284,28 +284,25 @@ class AzureCollectionStats {
         queueService.getQueueMetadata(queueName, function(error, metadata) {
             if (!error) {
                 var processed = 0;
-                async.doWhilst(
-                    function(callback) {
+                async.doWhilst(function(callback) {
                     stats._getStatsBatch(function(error, aggrStatsBatch) {
                         resultError = error ? error + resultError : resultError;
                         resultStats.add(aggrStatsBatch);
                         processed += STAT_MSG_NUMBER_PER_BATCH;
                         return callback();
                     });
-                },
-                    function() {
-                        const cb = arguments[arguments.length - 1];
-                        const args = Array.prototype.slice.call(arguments, 0, arguments.length - 1);
-                        const f = function() {
-                    return processed < metadata.approximateMessageCount;
-                };
-                        try {
-                            cb(null, f.apply(this, args));
-                        } catch (e) {
-                            cb(e, null);
-                        }
-                    },
-                    function() {
+                }, function() {
+                    const cb = arguments[arguments.length - 1];
+                    const args = Array.prototype.slice.call(arguments, 0, arguments.length - 1);
+                    const f = function() {
+                        return processed < metadata.approximateMessageCount;
+                    };
+                    try {
+                        cb(null, f.apply(this, args));
+                    } catch (e) {
+                        cb(e, null);
+                    }
+                }, function() {
                     if (!resultError) {
                         return callback(null, resultStats);
                     } else {
