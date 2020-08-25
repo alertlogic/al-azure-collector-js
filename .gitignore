@@ -3,6 +3,7 @@ node_modules/
 test/report.xml
 #idea
 .idea/
+.vscode/
 nbproject/
 .nyc_output/
 coverage/
