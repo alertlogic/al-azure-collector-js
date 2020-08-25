@@ -79,7 +79,8 @@ class AlAzureDlBlob {
                 if (listErr) {
                     return callback(listErr);
                 } else {
-                    async.mapLimit(dlblobList.entries, DLQ_SAMPLE_SIZE, async.reflect(function(blob, asyncCallback) {
+                    const sample = dlblobList.entries.slice(0,DLQ_SAMPLE_SIZE);
+                    async.mapLimit(sample, CONCURRENT_BLOB_PROCESS_NUM, async.reflect(function(blob, asyncCallback) {
                         return dlblob._getSampleMessage(blob, asyncCallback);
                     }), (err, dlSample) => {
                         if (err) return callback(err);
