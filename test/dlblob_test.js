@@ -107,7 +107,6 @@ describe('Dead letter blob processing unit tests.', function() {
         .query({'restype':'container','comp':'list','prefix':process.env.WEBSITE_SITE_NAME})
         .times(5)
         .reply(200, (uri) => {
-            console.log('uri is: ', uri)
             return mock.LIST_CONTAINER_BLOBS()
         });
         
@@ -115,11 +114,66 @@ describe('Dead letter blob processing unit tests.', function() {
         var getBlobTextStub = sinon.fake();
         nock('https://kktestdl.blob.core.windows.net:443', {'encodedQueryParams':true})
         .get(/alertlogic-dl.*/)
-        .times(5)
+        .times(6)
         .reply(200, () => {
             getBlobTextStub();
             return JSON.stringify(mock.GET_BLOB_CONTENT_TEXT)
         });
+        
+        // Delete blob
+        var deleteBlobStub = sinon.fake();
+        nock('https://kktestdl.blob.core.windows.net:443', {'encodedQueryParams':true})
+        .delete(/alertlogic-dl.*/)
+        .times(6)
+        .reply(202, function() {deleteBlobStub();});
+        
+        var testProcessingStub = sinon.fake();
+        var dlblob = new AlAzureDlBlob(mock.DEFAULT_FUNCTION_CONTEXT, testProcessingStub);
+        dlblob.getDlBlobStats(function(err, {dl_stats: {dl_count, max_dl_size, dl_sample}}) {
+            assert.equal(err, null);
+            assert.equal(dl_count, 6);
+            assert.equal(max_dl_size, 4257);
+            assert.equal(JSON.parse(dl_sample).length, 5);
+            sinon.assert.callCount(getBlobTextStub, 5);
+            done();
+        });
+    });
+    
+    it('Stats error', function(done) {
+        process.env.DL_BLOB_PAGE_SIZE = '10';
+        // Mock Azure HTTP calls
+        // List blobs
+        nock('https://kktestdl.blob.core.windows.net:443', {'encodedQueryParams':true})
+        .get('/alertlogic-dl')
+        .query({'restype':'container','comp':'list','prefix':process.env.WEBSITE_SITE_NAME})
+        .times(5)
+        .reply(200, (uri) => {
+            return mock.LIST_CONTAINER_BLOBS()
+        });
+        
+        // Get blob content
+        var getBlobTextStub = sinon.fake();
+        nock('https://kktestdl.blob.core.windows.net:443', {'encodedQueryParams':true})
+        .get(/alertlogic-dl.*/)
+        .times(2)
+        .reply(200, () => {
+            getBlobTextStub();
+            return JSON.stringify(mock.GET_BLOB_CONTENT_TEXT)
+        });
+        
+        let errorCallback = () => {
+            getBlobTextStub();
+            return {
+                message: 'something is broke',
+                code: 400
+            };
+        }
+
+        // error
+        nock('https://kktestdl.blob.core.windows.net:443', {'encodedQueryParams':true})
+        .get(/alertlogic-dl.*/)
+        .times(3)
+        .reply(400, errorCallback);
         
         // Delete blob
         var deleteBlobStub = sinon.fake();
