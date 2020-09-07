@@ -24,6 +24,7 @@ const async = require('async');
 const azureStorage = require('azure-storage');
 
 const CONCURRENT_BLOB_PROCESS_NUM = 20;
+const DLQ_SAMPLE_SIZE = 2;
 const LIST_BLOB_PAGE_SIZE = 100;
 const DEFAULT_DL_CONTAINER_NAME = 'alertlogic-dl';
 
@@ -78,13 +79,20 @@ class AlAzureDlBlob {
                 if (listErr) {
                     return callback(listErr);
                 } else {
-                    const dlstats =  {
-                        dl_stats: {
-                            dl_count: dlblobList.entries.length,
-                            max_dl_size: dlblob._findMaxDlBlobSize(dlblobList.entries)
-                        }
-                    };
-                    return callback(null, dlstats);
+                    const sample = dlblobList.entries.slice(0,DLQ_SAMPLE_SIZE);
+                    async.mapLimit(sample, CONCURRENT_BLOB_PROCESS_NUM, async.reflect(function(blob, asyncCallback) {
+                        return dlblob._getSampleMessage(blob, asyncCallback);
+                    }), (err, dlSample) => {
+                        if (err) return callback(err);
+                        let dlstats =  {
+                            dl_stats: {
+                                dl_count: dlblobList.entries.length,
+                                max_dl_size: dlblob._findMaxDlBlobSize(dlblobList.entries),
+                                dl_sample: JSON.stringify(dlSample)
+                            }
+                        };
+                        return callback(null, dlstats);
+                    });
                 }
             });
     };
@@ -108,6 +116,11 @@ class AlAzureDlBlob {
                     }), callback);
                 }
         });
+    };
+
+    _getSampleMessage(blob, callback) {
+        var dlblob = this;
+        return dlblob._blobService.getBlobToText(dlblob._dlContainerName, blob.name, callback);
     };
     
     _processDlBlob(blob, callback) {
