@@ -24,7 +24,7 @@ const async = require('async');
 const azureStorage = require('azure-storage');
 
 const CONCURRENT_BLOB_PROCESS_NUM = 20;
-const DLQ_SAMPLE_SIZE = 5;
+const DLQ_SAMPLE_SIZE = 2;
 const LIST_BLOB_PAGE_SIZE = 100;
 const DEFAULT_DL_CONTAINER_NAME = 'alertlogic-dl';
 
