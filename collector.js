@@ -37,17 +37,21 @@ const COLLECTOR_RETRY_OPTS = {
  * @param {String} [alOptional.alApiEndpoint] - (optional) Alert Logic API endpoint. Default is process.env.CUSTOMCONNSTR_APP_AL_API_ENDPOINT
  * @param {String} [alOptional.alIngestEndpoint] - (optional) Alert Logic Ingestion service endpoint. Default is process.env.APP_INGEST_ENDPOINT
  * @param {String} [alOptional.alDataResidency] - (optional) data residency on Alert Logic side. Default is process.env.CUSTOMCONNSTR_APP_AL_RESIDENCY
- *
+ * @param {String} [alOptional.filterJSON] - (optional) Alert Logic filterJSON. Default is process.env.CUSTOMCONNSTR_APP_AL_FILTERJSON
+ * @param {String} [alOptional.filterREGEX] - (optional) Alert Logic filterREGEX. Default is process.env.CUSTOMCONNSTR_APP_AL_FILTERREGEX
+ * 
  */
 class AlAzureCollector {
     constructor(azureContext, collectorType, version,
-            {hostId, sourceId, aimsKeyId, aimsKeySecret, alApiEndpoint, alIngestEndpoint, alDataResidency} = {}) {
+            {hostId, sourceId, aimsKeyId, aimsKeySecret, alApiEndpoint, alIngestEndpoint, alDataResidency, filterJSON, filterREGEX} = {}) {
         this._azureContext = azureContext;
         this._collectorType = collectorType;
         this._version = version;
         
         this._hostId = hostId ? hostId : process.env.COLLECTOR_HOST_ID;
         this._sourceId = sourceId ? sourceId : process.env.COLLECTOR_SOURCE_ID;
+        this._filterJson = filterJSON ? filterJSON : process.env.CUSTOMCONNSTR_APP_AL_FILTERJSON;
+        this._filterRegex = filterREGEX ? filterREGEX : process.env.CUSTOMCONNSTR_APP_AL_FILTERREGEX;
         var alKeyId = aimsKeyId ? aimsKeyId : process.env.CUSTOMCONNSTR_APP_AL_ACCESS_KEY_ID;
         var alSecret = aimsKeySecret ? aimsKeySecret : process.env.CUSTOMCONNSTR_APP_AL_SECRET_KEY;
         var creds = {
@@ -101,7 +105,7 @@ class AlAzureCollector {
         var stats = this._collectionStats;
         
         if (messages && messages.length > 0) {
-            alcollector.AlLog.buildPayload(this._hostId, this._sourceId, hm, messages, formatFun, function(err, payload){
+            alcollector.AlLog.buildPayload(this._hostId, this._sourceId, hm, messages, formatFun, this._filterJson, this._filterRegex, function(err, payload){
                 if (err) {
                     return callback(err);
                 } else {
