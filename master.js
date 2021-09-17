@@ -101,6 +101,7 @@ class AlAzureMaster {
                 new alcollector.AzcollectC(
                     this._alAzcollectEndpoint,
                     this._aimsc,
+                    'azure',
                     this._collectorType,
                     false,
                     MASTER_RETRY_OPTS) :
@@ -148,6 +149,7 @@ class AlAzureMaster {
         return this._azcollectc = new alcollector.AzcollectC(
                 endpoint, 
                 this._aimsc, 
+                'azure',
                 this._collectorType, 
                 false, MASTER_RETRY_OPTS);
     }

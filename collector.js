@@ -105,11 +105,11 @@ class AlAzureCollector {
         var stats = this._collectionStats;
         
         if (messages && messages.length > 0) {
-            alcollector.AlLog.buildPayload(this._hostId, this._sourceId, hm, messages, formatFun, this._filterJson, this._filterRegex, function(err, payload){
+            alcollector.AlLog.buildPayload({hostId: this._hostId, sourceId: this._sourceId, hostmetaElems: hm, content: messages, parseCallback: formatFun, filterJson: this._filterJson, filterRegexp: this._filterRegex}, function(err, data){
                 if (err) {
                     return callback(err);
                 } else {
-                    ingestc.sendAicspmsgs(payload)
+                    ingestc.sendLogmsgs(data.payload)
                         .then( resp => {
                             // Subtract 2 bytes in order not to count array brackets [].
                             const bytes = JSON.stringify(messages).length - 2;
