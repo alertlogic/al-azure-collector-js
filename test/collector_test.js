@@ -72,14 +72,19 @@ describe('Collector tests', function() {
     });
 
     it('Verify processLog with default hostmeta with filterJson', function(done) {
-        var expectedBody = 'eJzjyuDiLM4vLUpO1c1MEYrmYs/ILy4BMUVSY2WKnLynOOz5aCf18Wrh1v7KIDUJBiULLgkuTpCi+JLKglQhbinOxKrSotT4tNI8Lhkuvpz85MSceJB8XmJuqhCXFEdiQYEuiA0ALCMieA==';
-        
+        let expectedLogMsgsBody = 'eJzjyuDiLM4vLUpO1c1MEYrmYs/ILy4BMUVSY2WKnLynOOz5aCf18Wrh1v7KIDUJBiULLgkuTpCi+JLKglQhbinOxKrSotT4tNI8Lhkuvpz85MSceJB8XmJuqhCXFEdiQYEuiA0ALCMieA==';
+        let expectedLMSStatsBody = '[{"inst_type":"collector","appliance_id":"","source_type":"ehub","source_id":"source-id","host_id":"host-id","event_count":0,"byte_count":0,"application_id":"","timestamp":0}]';
         fakePost = sinon.stub(alcollector.AlServiceC.prototype, 'post').callsFake(
             function fakeFn(path, extraOptions) {
-                assert.equal(extraOptions.headers['Content-Type'], 'alertlogic.com/lm3-protobuf');
-                assert.equal(path, '/data/logmsgs');
-                assert.equal(expectedBody, extraOptions.body.toString('base64'));
-                
+                if (path === '/data/lmcstats') {
+                    assert.equal(extraOptions.headers['Content-Type'], 'alertlogic.com/json');
+                    assert.equal(expectedLMSStatsBody, extraOptions.body.toString('base64'));
+                } else {
+                    assert.equal(extraOptions.headers['Content-Type'], 'alertlogic.com/lm3-protobuf');
+                    assert.equal(path, '/data/logmsgs');
+                    assert.equal(expectedLogMsgsBody, extraOptions.body.toString('base64'));
+                }
+
                 return new Promise(function(resolve, reject){
                     return resolve('ok');
                 });
@@ -93,8 +98,8 @@ describe('Collector tests', function() {
         process.env.CUSTOMCONNSTR_APP_AL_API_ENDPOINT = mock.AL_API_ENDPOINT;
         process.env.CUSTOMCONNSTR_APP_AL_RESIDENCY = 'default';
         process.env.APP_INGEST_ENDPOINT = mock.INGEST_API_ENDPOINT;
-        process.env.CUSTOMCONNSTR_APP_AL_FILTERJSON = mock.AL_FILTERJSON;
-        process.env.CUSTOMCONNSTR_APP_AL_FILTERREGEX = mock.AL_FILTERREGEX;
+        process.env.COLLECTOR_FILTER_JSON = mock.AL_FILTERJSON;
+        process.env.COLLECTOR_FILTER_REGEX = mock.AL_FILTERREGEX;
         var collector = new AlAzureCollector(mock.DEFAULT_FUNCTION_CONTEXT, 'ehub', '1.0.0');
         var formatFun = function(msg) {
             sinon.assert.match(msg, filteredMsg);
@@ -116,13 +121,18 @@ describe('Collector tests', function() {
     });
 
     it('Verify processLog with default hostmeta with filterRegex', function(done) {
-        var expectedBody = 'eJzjyuDiLM4vLUpO1c1MEYrmYs/ILy4BMUVSY2WKnLynOOz5aCf18Wrh1v7KIDUJBiULLgkuTpCi+JLKglQhbinOxKrSotT4tNI8Lhkuvpz85MSceJB8XmJuqhCXFEdiQYEuiA0ALCMieA==';
-        
+        let expectedLogMsgsBody = 'eJzjyuDiLM4vLUpO1c1MEYrmYs/ILy4BMUVSY2WKnLynOOz5aCf18Wrh1v7KIDUJBiULLgkuTpCi+JLKglQhbinOxKrSotT4tNI8Lhkuvpz85MSceJB8XmJuqhCXFEdiQYEuiA0ALCMieA==';
+        let expectedLMSStatsBody = '[{"inst_type":"collector","appliance_id":"","source_type":"ehub","source_id":"source-id","host_id":"host-id","event_count":0,"byte_count":0,"application_id":"","timestamp":0}]';
         fakePost = sinon.stub(alcollector.AlServiceC.prototype, 'post').callsFake(
             function fakeFn(path, extraOptions) {
-                assert.equal(extraOptions.headers['Content-Type'], 'alertlogic.com/lm3-protobuf');
-                assert.equal(path, '/data/logmsgs');
-                assert.equal(expectedBody, extraOptions.body.toString('base64'));
+                if (path === '/data/lmcstats') {
+                    assert.equal(extraOptions.headers['Content-Type'], 'alertlogic.com/json');
+                    assert.equal(expectedLMSStatsBody, extraOptions.body.toString('base64'));
+                } else {
+                    assert.equal(extraOptions.headers['Content-Type'], 'alertlogic.com/lm3-protobuf');
+                    assert.equal(path, '/data/logmsgs');
+                    assert.equal(expectedLogMsgsBody, extraOptions.body.toString('base64'));
+                }
                 
                 return new Promise(function(resolve, reject){
                     return resolve('ok');
@@ -159,13 +169,18 @@ describe('Collector tests', function() {
     });
     
     it('Verify processLog with custom hostmeta with filterJson', function(done) {
-        var expectedBody = 'eJzj8uDiKM4vLUpO9UwRsuFiy8gvLgGyRO6aencv0Z+ZHfvC5WVArVPYA/XKcxIMSlJcElycIDXxJZUFqULcUpyJVaVFqfFppXkAkv4Y7Q==';
-        
+        let expectedLogMsgsBody = 'eJzj8uDiKM4vLUpO9UwRsuFiy8gvLgGyRO6aencv0Z+ZHfvC5WVArVPYA/XKcxIMSlJcElycIDXxJZUFqULcUpyJVaVFqfFppXkAkv4Y7Q==';
+        let expectedLMSStatsBody = '[{"inst_type":"collector","appliance_id":"","source_type":"ehub","source_id":"sourceId","host_id":"hostId","event_count":0,"byte_count":0,"application_id":"","timestamp":0}]';
         fakePost = sinon.stub(alcollector.AlServiceC.prototype, 'post').callsFake(
             function fakeFn(path, extraOptions) {
-                assert.equal(extraOptions.headers['Content-Type'], 'alertlogic.com/lm3-protobuf');
-                assert.equal(path, '/data/logmsgs');
-                assert.equal(expectedBody, extraOptions.body.toString('base64'));
+                if (path === '/data/lmcstats') {
+                    assert.equal(extraOptions.headers['Content-Type'], 'alertlogic.com/json');
+                    assert.equal(expectedLMSStatsBody, extraOptions.body);
+                } else {
+                    assert.equal(extraOptions.headers['Content-Type'], 'alertlogic.com/lm3-protobuf');
+                    assert.equal(path, '/data/logmsgs');
+                    assert.equal(expectedLogMsgsBody, extraOptions.body.toString('base64'));
+                } 
                 
                 return new Promise(function(resolve, reject){
                     return resolve('ok');
@@ -209,13 +224,18 @@ describe('Collector tests', function() {
     });
 
     it('Verify processLog with custom hostmeta with filterRegex', function(done) {
-        var expectedBody = 'eJzj8uDiKM4vLUpO9UwRsuFiy8gvLgGyRO6aencv0Z+ZHfvC5WVArVPYA/XKcxIMSlJcElycIDXxJZUFqULcUpyJVaVFqfFppXkAkv4Y7Q==';
-        
+        let expectedLogMsgsBody = 'eJzj8uDiKM4vLUpO9UwRsuFiy8gvLgGyRO6aencv0Z+ZHfvC5WVArVPYA/XKcxIMSlJcElycIDXxJZUFqULcUpyJVaVFqfFppXkAkv4Y7Q==';
+        let expectedLMSStatsBody = '[{"inst_type":"collector","appliance_id":"","source_type":"ehub","source_id":"sourceId","host_id":"hostId","event_count":0,"byte_count":0,"application_id":"","timestamp":0}]';
         fakePost = sinon.stub(alcollector.AlServiceC.prototype, 'post').callsFake(
             function fakeFn(path, extraOptions) {
-                assert.equal(extraOptions.headers['Content-Type'], 'alertlogic.com/lm3-protobuf');
-                assert.equal(path, '/data/logmsgs');
-                assert.equal(expectedBody, extraOptions.body.toString('base64'));
+                if (path === '/data/lmcstats') {
+                    assert.equal(extraOptions.headers['Content-Type'], 'alertlogic.com/json');
+                    assert.equal(expectedLMSStatsBody, extraOptions.body);
+                } else {
+                    assert.equal(extraOptions.headers['Content-Type'], 'alertlogic.com/lm3-protobuf');
+                    assert.equal(path, '/data/logmsgs');
+                    assert.equal(expectedLogMsgsBody, extraOptions.body.toString('base64'));
+                }
                 
                 return new Promise(function(resolve, reject){
                     return resolve('ok');

@@ -9,9 +9,8 @@
  */
 'use strict';
 
+const moment = require('moment');
 const alcollector = require('@alertlogic/al-collector-js');
-const AzureCollectionStats = require('./appstats').AzureCollectionStats;
-
 
 const COLLECTOR_RETRY_OPTS = {
     factor: 2,
@@ -37,21 +36,21 @@ const COLLECTOR_RETRY_OPTS = {
  * @param {String} [alOptional.alApiEndpoint] - (optional) Alert Logic API endpoint. Default is process.env.CUSTOMCONNSTR_APP_AL_API_ENDPOINT
  * @param {String} [alOptional.alIngestEndpoint] - (optional) Alert Logic Ingestion service endpoint. Default is process.env.APP_INGEST_ENDPOINT
  * @param {String} [alOptional.alDataResidency] - (optional) data residency on Alert Logic side. Default is process.env.CUSTOMCONNSTR_APP_AL_RESIDENCY
- * @param {String} [alOptional.filterJSON] - (optional) Alert Logic filterJSON. Default is process.env.CUSTOMCONNSTR_APP_AL_FILTERJSON
- * @param {String} [alOptional.filterREGEX] - (optional) Alert Logic filterREGEX. Default is process.env.CUSTOMCONNSTR_APP_AL_FILTERREGEX
+ * @param {String} [alOptional.filterJson] - (optional) Alert Logic filterJSON. Default is process.env.CUSTOMCONNSTR_APP_AL_FILTERJSON
+ * @param {String} [alOptional.filterRegex] - (optional) Alert Logic filterREGEX. Default is process.env.CUSTOMCONNSTR_APP_AL_FILTERREGEX
  * 
  */
 class AlAzureCollector {
     constructor(azureContext, collectorType, version,
-            {hostId, sourceId, aimsKeyId, aimsKeySecret, alApiEndpoint, alIngestEndpoint, alDataResidency, filterJSON, filterREGEX} = {}) {
+            {hostId, sourceId, aimsKeyId, aimsKeySecret, alApiEndpoint, alIngestEndpoint, alDataResidency, filterJson, filterRegex} = {}) {
         this._azureContext = azureContext;
         this._collectorType = collectorType;
         this._version = version;
         
         this._hostId = hostId ? hostId : process.env.COLLECTOR_HOST_ID;
         this._sourceId = sourceId ? sourceId : process.env.COLLECTOR_SOURCE_ID;
-        this._filterJson = filterJSON ? filterJSON : process.env.CUSTOMCONNSTR_APP_AL_FILTERJSON;
-        this._filterRegex = filterREGEX ? filterREGEX : process.env.CUSTOMCONNSTR_APP_AL_FILTERREGEX;
+        this._filterJson = filterJson ? filterJson : process.env.COLLECTOR_FILTER_JSON;
+        this._filterRegex = filterRegex ? filterRegex : process.env.COLLECTOR_FILTER_REGEX;
         var alKeyId = aimsKeyId ? aimsKeyId : process.env.CUSTOMCONNSTR_APP_AL_ACCESS_KEY_ID;
         var alSecret = aimsKeySecret ? aimsKeySecret : process.env.CUSTOMCONNSTR_APP_AL_SECRET_KEY;
         var creds = {
@@ -63,7 +62,6 @@ class AlAzureCollector {
         var ingestEndpoint = alIngestEndpoint ? alIngestEndpoint : process.env.APP_INGEST_ENDPOINT;
         this._ingestc = new alcollector.IngestC(ingestEndpoint, aimsc, 'azure_function', COLLECTOR_RETRY_OPTS);
         this._alDataResidency = alDataResidency ? alDataResidency : process.env.CUSTOMCONNSTR_APP_AL_RESIDENCY;
-        this._collectionStats = new AzureCollectionStats(azureContext);
     }
     
     _defaultHostmetaElems() {
@@ -77,6 +75,20 @@ class AlAzureCollector {
             value: {str: process.env.WEBSITE_HOSTNAME}
           }
         ];
+    }
+
+    _prepareLmcStats(raw_count, raw_bytes) {
+        return {
+            inst_type: 'collector',
+            appliance_id: '',
+            source_type: this._collectorType,
+            source_id: this._sourceId,
+            host_id: this._hostId,
+            event_count: raw_count,
+            byte_count: raw_bytes,
+            application_id: '',
+            timestamp: moment().unix()
+        };
     }
     
     /**
@@ -102,18 +114,31 @@ class AlAzureCollector {
         // Somebody can still pass 'undefined' as hostmetaElems and it will be added to args list.
         var hm = hostmetaElems ? hostmetaElems : this._defaultHostmetaElems();
         var ingestc = this._ingestc;
-        var stats = this._collectionStats;
         
         if (messages && messages.length > 0) {
-            alcollector.AlLog.buildPayload({hostId: this._hostId, sourceId: this._sourceId, hostmetaElems: hm, content: messages, parseCallback: formatFun, filterJson: this._filterJson, filterRegexp: this._filterRegex}, function(err, data){
+            let buildPayloadObj = {
+                hostId: this._hostId, 
+                sourceId: this._sourceId, 
+                hostmetaElems: hm, 
+                content: messages, 
+                parseCallback: formatFun, 
+                filterJson: this._filterJson, 
+                filterRegexp: this._filterRegex
+            };
+            alcollector.AlLog.buildPayload(buildPayloadObj, (err, data) => {
                 if (err) {
                     return callback(err);
                 } else {
                     ingestc.sendLogmsgs(data.payload)
                         .then( resp => {
-                            // Subtract 2 bytes in order not to count array brackets [].
-                            const bytes = JSON.stringify(messages).length - 2;
-                            return stats.putLogStats(bytes, messages.length, callback);
+                            let lmcStats = this._prepareLmcStats(data.raw_count, data.raw_bytes);
+                            ingestc.sendLmcstats(JSON.stringify([lmcStats]))
+                                .then(resp => {
+                                    return callback(null, resp);
+                                })
+                                .catch(exception => {
+                                    return callback(exception);
+                                });
                         })
                         .catch( err => {
                             return callback(err);
