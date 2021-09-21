@@ -36,8 +36,8 @@ const COLLECTOR_RETRY_OPTS = {
  * @param {String} [alOptional.alApiEndpoint] - (optional) Alert Logic API endpoint. Default is process.env.CUSTOMCONNSTR_APP_AL_API_ENDPOINT
  * @param {String} [alOptional.alIngestEndpoint] - (optional) Alert Logic Ingestion service endpoint. Default is process.env.APP_INGEST_ENDPOINT
  * @param {String} [alOptional.alDataResidency] - (optional) data residency on Alert Logic side. Default is process.env.CUSTOMCONNSTR_APP_AL_RESIDENCY
- * @param {String} [alOptional.filterJson] - (optional) Alert Logic filterJSON. Default is process.env.CUSTOMCONNSTR_APP_AL_FILTERJSON
- * @param {String} [alOptional.filterRegex] - (optional) Alert Logic filterREGEX. Default is process.env.CUSTOMCONNSTR_APP_AL_FILTERREGEX
+ * @param {String} [alOptional.filterJson] - (optional) Alert Logic filterJSON. Default is process.env.COLLECTOR_FILTER_JSON
+ * @param {String} [alOptional.filterRegex] - (optional) Alert Logic filterREGEX. Default is process.env.COLLECTOR_FILTER_REGEX
  * 
  */
 class AlAzureCollector {
@@ -137,7 +137,7 @@ class AlAzureCollector {
                                     return callback(null, resp);
                                 })
                                 .catch(exception => {
-                                    return callback(exception);
+                                    return callback(null);
                                 });
                         })
                         .catch( err => {
