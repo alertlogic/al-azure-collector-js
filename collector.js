@@ -36,8 +36,8 @@ const COLLECTOR_RETRY_OPTS = {
  * @param {String} [alOptional.alApiEndpoint] - (optional) Alert Logic API endpoint. Default is process.env.CUSTOMCONNSTR_APP_AL_API_ENDPOINT
  * @param {String} [alOptional.alIngestEndpoint] - (optional) Alert Logic Ingestion service endpoint. Default is process.env.APP_INGEST_ENDPOINT
  * @param {String} [alOptional.alDataResidency] - (optional) data residency on Alert Logic side. Default is process.env.CUSTOMCONNSTR_APP_AL_RESIDENCY
- * @param {String} [alOptional.filterJson] - (optional) Alert Logic filterJSON. Default is process.env.COLLECTOR_FILTER_JSON
- * @param {String} [alOptional.filterRegex] - (optional) Alert Logic filterREGEX. Default is process.env.COLLECTOR_FILTER_REGEX
+ * @param {String} [alOptional.filterJson] - (optional) Alert Logic filterJSON. Default is process.env.APP_FILTER_JSON
+ * @param {String} [alOptional.filterRegex] - (optional) Alert Logic filterREGEX. Default is process.env.APP_FILTER_REGEX
  * 
  */
 class AlAzureCollector {
@@ -49,8 +49,8 @@ class AlAzureCollector {
         
         this._hostId = hostId ? hostId : process.env.COLLECTOR_HOST_ID;
         this._sourceId = sourceId ? sourceId : process.env.COLLECTOR_SOURCE_ID;
-        this._filterJson = filterJson ? filterJson : process.env.COLLECTOR_FILTER_JSON;
-        this._filterRegex = filterRegex ? filterRegex : process.env.COLLECTOR_FILTER_REGEX;
+        this._filterJson = filterJson ? filterJson : process.env.APP_FILTER_JSON;
+        this._filterRegex = filterRegex ? filterRegex : process.env.APP_FILTER_REGEX;
         var alKeyId = aimsKeyId ? aimsKeyId : process.env.CUSTOMCONNSTR_APP_AL_ACCESS_KEY_ID;
         var alSecret = aimsKeySecret ? aimsKeySecret : process.env.CUSTOMCONNSTR_APP_AL_SECRET_KEY;
         var creds = {
