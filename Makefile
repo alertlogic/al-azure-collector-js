@@ -18,3 +18,6 @@ clean:
 	rm -f package-lock.json
 	rm -f test/report.xml
 	rm -rf ./coverage/
+
+publish:
+	npm run rel
