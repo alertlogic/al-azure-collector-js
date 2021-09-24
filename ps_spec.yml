@@ -32,6 +32,7 @@ stages:
               
               git config --global credential.helper \'store\' || true
               echo "https://$ALPS_GH_USER:$ALPS_GH_TOKEN@github.com" > ~/.git-credentials
+              git checkout npm
               git tag -a $PKGVERSION -m "$PKGNAME release $PKGVERSION" HEAD
               
               npm install
