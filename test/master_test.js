@@ -12,12 +12,10 @@ const sinon = require('sinon');
 const nock = require('nock');
 const fs = require('fs');
 const alcollector = require('@alertlogic/al-collector-js');
-const nodeAuth = require('@azure/ms-rest-nodeauth');
 
 const AlAzureMaster = require('../master').AlAzureMaster;
 const AzureWebAppStats = require('../appstats').AzureWebAppStats;
 const CollectionStatRecord = require('../appstats').CollectionStatRecord;
-const AlAzureUpdater = require('../updater').AlAzureUpdater;
 const mock = require('./mock');
 
 describe('Master tests', function() {
@@ -468,14 +466,6 @@ describe('Master tests', function() {
             .post(/sync/, /.*/ )
             .query(true)
             .reply(200, '');
-            var azureOpts = {
-                clientId: 'client-id',
-                domain: 'tenant-id', 
-                clientSecret: 'client-secret',
-                subscriptionId: 'subscription-id',
-                resourceGroup: 'rg',
-                webAppName: 'app-name'
-            };
             const forceUpdateRes = {force_update: true};
             fakePost.restore();
             fakePost = sinon.stub(alcollector.AlServiceC.prototype, 'post').callsFake(

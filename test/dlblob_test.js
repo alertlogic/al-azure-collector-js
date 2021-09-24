@@ -13,7 +13,6 @@ const sinon = require('sinon');
 const nock = require('nock');
 
 const mock = require('./mock');
-const { fake } = require('sinon');
 const AlAzureDlBlob = require('../dlblob').AlAzureDlBlob;
 
 describe('Dead letter blob processing unit tests.', function() {
@@ -107,7 +106,7 @@ describe('Dead letter blob processing unit tests.', function() {
         .query({'restype':'container','comp':'list','prefix':process.env.WEBSITE_SITE_NAME})
         .times(5)
         .reply(200, (uri) => {
-            return mock.LIST_CONTAINER_BLOBS()
+            return mock.LIST_CONTAINER_BLOBS();
         });
         
         // Get blob content
@@ -117,7 +116,7 @@ describe('Dead letter blob processing unit tests.', function() {
         .times(6)
         .reply(200, () => {
             getBlobTextStub();
-            return JSON.stringify(mock.GET_BLOB_CONTENT_TEXT)
+            return JSON.stringify(mock.GET_BLOB_CONTENT_TEXT);
         });
         
         // Delete blob
@@ -148,7 +147,7 @@ describe('Dead letter blob processing unit tests.', function() {
         .query({'restype':'container','comp':'list','prefix':process.env.WEBSITE_SITE_NAME})
         .times(5)
         .reply(200, (uri) => {
-            return mock.LIST_CONTAINER_BLOBS_EMPTY()
+            return mock.LIST_CONTAINER_BLOBS_EMPTY();
         });
         
         var testProcessingStub = sinon.fake();
@@ -171,7 +170,7 @@ describe('Dead letter blob processing unit tests.', function() {
         .query({'restype':'container','comp':'list','prefix':process.env.WEBSITE_SITE_NAME})
         .times(5)
         .reply(200, (uri) => {
-            return mock.LIST_CONTAINER_BLOBS()
+            return mock.LIST_CONTAINER_BLOBS();
         });
         
         // Get blob content
@@ -181,7 +180,7 @@ describe('Dead letter blob processing unit tests.', function() {
         .times(2)
         .reply(200, () => {
             getBlobTextStub();
-            return JSON.stringify(mock.GET_BLOB_CONTENT_TEXT)
+            return JSON.stringify(mock.GET_BLOB_CONTENT_TEXT);
         });
         
         let errorCallback = () => {
@@ -190,7 +189,7 @@ describe('Dead letter blob processing unit tests.', function() {
                 message: 'something is broke',
                 code: 400
             };
-        }
+        };
 
         // error
         nock('https://kktestdl.blob.core.windows.net:443', {'encodedQueryParams':true})
