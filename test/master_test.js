@@ -137,6 +137,8 @@ describe('Master tests', function() {
                 assert.equal(collectorSourceId, 'new-source-id');
                 const expectedRegisterBody = {
                     body: {
+                        app_filter_json: "",
+                        app_filter_regex: "",
                         app_tenant_id: "tenant-id",
                         client_id: "client-id",
                         client_secret: "client-secret",
@@ -260,6 +262,8 @@ describe('Master tests', function() {
                 assert.equal(collectorSourceId, 'new-source-id1');
                 const expectedBody = {
                     body: {
+                        app_filter_json: '',
+                        app_filter_regex: '',
                         app_tenant_id: 'tenant-id',
                         client_id: process.env.APP_PRINCIPAL_ID,
                         client_secret: 'Managed Service Identity',
@@ -509,9 +513,13 @@ describe('Master tests', function() {
             .times(5)
             .reply(404, mock.CONTAINER_NOT_FOUND);
             
+            process.env.APP_FILTER_JSON = mock.AL_FILTERJSON;
+            process.env.APP_FILTER_REGEX = mock.AL_FILTERREGEX;
+            
             var master = new AlAzureMaster(mock.DEFAULT_FUNCTION_CONTEXT, 'ehub', '1.0.0');
             master.checkin('2017-12-22T14:31:39', function(err, resp){
                 if (err) console.log(err);
+                
                 process.env.APP_DL_CONTAINER_NAME = storedDlName;
                 let cs = new CollectionStatRecord();
                 cs.log.bytes = 10;
@@ -519,6 +527,8 @@ describe('Master tests', function() {
                 const expectedCheckin = { 
                     body: {
                         version: '1.0.0',
+                        app_filter_json: '{\"Filter\": \"test1\"}',
+                        app_filter_regex: '{\"Filter\": \"test1\"}',
                         app_tenant_id: 'tenant-id',
                         collection_stats: cs,
                         host_id: 'existing-host-id',

@@ -62,10 +62,14 @@ describe('Collector tests', function() {
         .times(100)
         .reply(201, '');
         
+        process.env.APP_FILTER_JSON = mock.AL_FILTERJSON;
+        process.env.APP_FILTER_REGEX = mock.AL_FILTERREGEX;
     });
     afterEach(function(done) {
         fakePost.restore();
         fakeAuth.restore();
+        delete process.env.APP_FILTER_JSON;
+        delete process.env.APP_FILTER_REGEX;
         fs.unlink(mock.AL_TOKEN_CACHE_FILENAME, function(err){
             done();
         });
@@ -98,8 +102,7 @@ describe('Collector tests', function() {
         process.env.CUSTOMCONNSTR_APP_AL_API_ENDPOINT = mock.AL_API_ENDPOINT;
         process.env.CUSTOMCONNSTR_APP_AL_RESIDENCY = 'default';
         process.env.APP_INGEST_ENDPOINT = mock.INGEST_API_ENDPOINT;
-        process.env.APP_FILTER_JSON = mock.AL_FILTERJSON;
-        process.env.APP_FILTER_REGEX = mock.AL_FILTERREGEX;
+        
         var collector = new AlAzureCollector(mock.DEFAULT_FUNCTION_CONTEXT, 'ehub', '1.0.0');
         var formatFun = function(msg) {
             sinon.assert.match(msg, filteredMsg);
