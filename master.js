@@ -117,6 +117,8 @@ class AlAzureMaster {
         this._subscriptionId = subscriptionId ? subscriptionId : process.env.APP_SUBSCRIPTION_ID;
         this._resourceGroup = resourceGroup ? resourceGroup : process.env.APP_RESOURCE_GROUP;
         this._webAppName = webAppName ? webAppName : process.env.WEBSITE_SITE_NAME;
+        this._appFilterJson = process.env.APP_FILTER_JSON ? process.env.APP_FILTER_JSON : '';
+        this._appFilterRegex = process.env.APP_FILTER_REGEX ? process.env.APP_FILTER_REGEX : '';
         
         this._appStats = new AzureWebAppStats(collectorAzureFunNames);
         this._collectionStats = new AzureCollectionStats(azureContext, {outputQueueBinding: OutputStatsBinding});
@@ -249,7 +251,9 @@ class AlAzureMaster {
             web_app_name: this._webAppName,
             app_resource_group: this._resourceGroup,
             app_tenant_id: this._domain,
-            subscription_id: this._subscriptionId
+            subscription_id: this._subscriptionId,
+            app_filter_json: this._appFilterJson,
+            app_filter_regex: this._appFilterJson
         };
     }
     
