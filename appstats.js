@@ -20,6 +20,7 @@ const STATS_PERIOD_MINUTES = 15;
 
 const STAT_MSG_VISIBILITY_TIMEOUT_SEC = 300;
 const STAT_MSG_NUMBER_PER_BATCH = 32;
+const MAX_STATS_PAGES = 10;
 
 const STAT_TYPES_LOG = 1;
 
@@ -81,11 +82,15 @@ class AzureWebAppStats {
     };
 
     _getFunctionStats(functionName, timestamp, callback) {
-        var accStats = {
+        let accStats = {
             invocations : 0,
             errors : 0
         };
-        return this._getFunctionStatsAcc(functionName, timestamp, null, accStats, callback);
+        let initialToken = {
+            token: null,
+            page: 0
+        };
+        return this._getFunctionStatsAcc(functionName, timestamp, initialToken, accStats, callback);
     };
 
     _getFunctionStatsAcc(functionName, timestamp, contToken, accStats, callback) {
@@ -96,7 +101,7 @@ class AzureWebAppStats {
         tableService.queryEntities(
             appstats.getLogTableName(), 
             appstats._getInvocationsQuery(functionName, timestamp),
-            contToken,
+            contToken.token,
             function(error, result) {
                 if (error) {
                     obj[functionName] = {
@@ -104,11 +109,16 @@ class AzureWebAppStats {
                     };
                     return callback(null, obj);
                 } else {
-                    if (result.continuationToken) {
+                    if (result.continuationToken && contToken.page < MAX_STATS_PAGES) {
+                        let cont = {
+                            token: result.continuationToken,
+                            page: contToken.page + 1
+                        };
+
                         return appstats._getFunctionStatsAcc(
                             functionName,
                             timestamp,
-                            result.continuationToken,
+                            cont,
                             appstats._getInvocationStats(result.entries, accStats),
                             callback);
                     } else {
