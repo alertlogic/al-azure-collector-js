@@ -134,6 +134,47 @@ describe('App Stats tests', function() {
                 done();
             });
         });
+
+        it('checks getAppStats() success with pagination', function(done) {
+            var msTableServiceStub = sinon.stub(azureStorage, 'createTableService').callsFake(
+                function fakeFn(account, key, host) {
+                    var mockObj = {
+                        queryEntities : function(table, query, token, callback) {
+                            if (query === 'Master')
+                                return callback(null, mock.MASTER_INVOCATION_LOGS);
+                            if (query === 'Collector')
+                                return callback(null, mock.COLLECTOR_INVOCATION_LOGS_CONTD);
+                            if (query === 'Updater')
+                                return callback(null, mock.UPDATER_INVOCATION_LOGS);
+                            return callback(null, {entries : []});
+                        }
+                    };
+                    return mockObj;
+                }
+            );
+
+            var getInvocationQueryStub = sinon.stub(AzureWebAppStats.prototype, '_getInvocationsQuery').callsFake(
+                function fakeFn(functionName, timestamp) {
+                    return functionName;
+                }
+            );
+
+            var expectedStats = {
+                statistics: [
+                    { Master: { invocations: 3, errors: 2 } },
+                    { Collector: { invocations: 11, errors: 0 } },
+                    { Updater: { invocations: 2, errors: 1 } }
+                ]
+            };
+
+            var stats = new AzureWebAppStats(DEFAULT_APP_FUNCTIONS);
+            stats.getAppStats('2017-12-22T14:31:39', function(err, appStats) {
+                msTableServiceStub.restore();
+                getInvocationQueryStub.restore();
+                assert.deepEqual(expectedStats, appStats);
+                done();
+            });
+        });
         
         it('checks getAppStats() success with cont token (Updater)', function(done) {
             var msTableServiceStub = sinon.stub(azureStorage, 'createTableService').callsFake(
