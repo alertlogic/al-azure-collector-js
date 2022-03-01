@@ -88,7 +88,7 @@ class AzureWebAppStats {
         };
         let initialToken = {
             token: null,
-            page: 0
+            pageNum: 0
         };
         return this._getFunctionStatsAcc(functionName, timestamp, initialToken, accStats, callback);
     };
@@ -109,10 +109,10 @@ class AzureWebAppStats {
                     };
                     return callback(null, obj);
                 } else {
-                    if (result.continuationToken && contToken.page < MAX_STATS_PAGES) {
+                    if (result.continuationToken && contToken.pageNum < MAX_STATS_PAGES) {
                         let cont = {
                             token: result.continuationToken,
-                            page: contToken.page + 1
+                            pageNum: contToken.pageNum + 1
                         };
 
                         return appstats._getFunctionStatsAcc(

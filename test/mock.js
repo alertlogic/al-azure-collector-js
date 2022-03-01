@@ -246,6 +246,24 @@ var COLLECTOR_INVOCATION_LOGS = {
     ]
 };
 
+var COLLECTOR_INVOCATION_LOGS_CONTD = {
+    entries : [
+      { PartitionKey: { '$': 'Edm.String', _: 'I' },
+        RowKey: { '$': 'Edm.String', _: '1bcef7c9-e0c3-4728-a704-b2b4c6e0f375' },
+        Timestamp: { '$': 'Edm.DateTime', _: '2017-12-22T10:05:30.666Z' },
+        ArgumentsJson: { _: '{"req":"Method: POST, Uri: https://test.azurewebsites.net/api/o365/webhook","_log":null,"_binder":null,"_context":"1bcef7c9-e0c3-4728-a704-b2b4c6e0f375","_logger":null,"$return":"response"}' },
+        EndTime: { '$': 'Edm.DateTime', _: '2017-12-22T10:04:47.760Z' },
+        FunctionInstanceHeartbeatExpiry: { '$': 'Edm.DateTime', _: '2017-12-22T10:07:45.676Z' },
+        FunctionName: { _: 'O365WebHook' },
+        LogOutput: { _: '' },
+        StartTime: { '$': 'Edm.DateTime', _: '2017-12-22T10:04:47.760Z' },
+        TriggerReason: { _: 'This function was programmatically called via the host APIs.' },
+        '.metadata': { etag: 'W/"datetime\'2017-12-22T10%3A05%3A30.6667953Z\'"' }
+      }
+    ],
+    continuationToken: 'cont-token'
+};
+
 var COLLECTOR_INVOCATION_FILTERJSON_LOGS = [
   { PartitionKey: { '$': 'Edm.String', _: 'I' },
     RowKey: { '$': 'Edm.String', _: '1bcef7c9-e0c3-4728-a704-b2b4c6e0f375' },
@@ -516,6 +534,7 @@ module.exports = {
     DEFAULT_FUNCTION_CONTEXT: DEFAULT_FUNCTION_CONTEXT,
     INVOCATION_STATS: INVOCATION_STATS,
     COLLECTOR_INVOCATION_LOGS: COLLECTOR_INVOCATION_LOGS,
+    COLLECTOR_INVOCATION_LOGS_CONTD: COLLECTOR_INVOCATION_LOGS_CONTD,
     COLLECTOR_INVOCATION_FILTERJSON_LOGS: COLLECTOR_INVOCATION_FILTERJSON_LOGS,
     MASTER_INVOCATION_LOGS: MASTER_INVOCATION_LOGS,
     UPDATER_INVOCATION_LOGS: UPDATER_INVOCATION_LOGS,
