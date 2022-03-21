@@ -1,6 +1,6 @@
 {
   "name": "@alertlogic/al-azure-collector-js",
-  "version": "3.0.2",
+  "version": "3.0.3",
   "description": "Alert Logic Azure Collector Common Library",
   "license": "MIT",
   "repository": {
@@ -29,7 +29,7 @@
     "sinon": "^7.2.3"
   },
   "dependencies": {
-    "@alertlogic/al-collector-js": "3.0.0",
+    "@alertlogic/al-collector-js": "3.0.1",
     "async": "^2.6.1",
     "@azure/arm-apimanagement": "5.1.1",
     "@azure/ms-rest-nodeauth": "2.0.5",
