@@ -104,9 +104,7 @@ class AzureWebAppStats {
             contToken.token,
             function(error, result) {
                 if (error) {
-                    obj[functionName] = {
-                        error : `${error}`
-                    };
+                    obj[functionName] = accStats;
                     return callback(null, obj);
                 } else {
                     if (result.continuationToken && contToken.pageNum < MAX_STATS_PAGES) {

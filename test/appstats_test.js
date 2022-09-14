@@ -227,7 +227,10 @@ describe('App Stats tests', function() {
                 function fakeFn(account, key, host) {
                     var mockObj = {
                         queryEntities : function(table, query, token, callback) {
-                            return callback('Error: getaddrinfo ENOTFOUND test.table.core.windows.net test.table.core.windows.net:443');
+                            return callback({
+                                errors: 0,
+                                invocations: 0
+                              });
                         }
                     };
                     return mockObj;
@@ -236,9 +239,18 @@ describe('App Stats tests', function() {
             
             var expectedStats = {
                 statistics:[
-                    {'Master':{'error':'Error: getaddrinfo ENOTFOUND test.table.core.windows.net test.table.core.windows.net:443'}},
-                    {'Collector':{'error':'Error: getaddrinfo ENOTFOUND test.table.core.windows.net test.table.core.windows.net:443'}},
-                    {'Updater':{'error':'Error: getaddrinfo ENOTFOUND test.table.core.windows.net test.table.core.windows.net:443'}}
+                    {'Master':{
+                        errors: 0,
+                        invocations: 0
+                      }},
+                    {'Collector':{
+                        errors: 0,
+                        invocations: 0
+                      }},
+                    {'Updater':{
+                        errors: 0,
+                        invocations: 0
+                      }}
                 ]
             };
             
