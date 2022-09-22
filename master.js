@@ -136,6 +136,11 @@ class AlAzureMaster {
         }
 
         this._azureWebsiteClient = new WebSiteManagementClient(this._azureCreds, this._subscriptionId);
+        this.azureClientObject = {
+            azureWebsiteClient: this._azureWebsiteClient,
+            webAppName: this._webAppName,
+            resourceGroup: this._resourceGroup
+        }
 
     }
 
@@ -196,7 +201,7 @@ class AlAzureMaster {
                 }
         });
     }
-    
+        
     /**
      *  @function updateAlEndpoints - retrieves Alert Logic service endpoints.
      *  
@@ -232,7 +237,7 @@ class AlAzureMaster {
                             APP_AZCOLLECT_ENDPOINT : mapsResult[0].azcollect,
                             APP_INGEST_ENDPOINT : mapsResult[1].ingest
                         };
-                        master.updateAppSettings(endpoints, function(settingsError) {
+                        m_util.updateAppSettings(endpoints, master.azureClientObject,function(settingsError) {
                             if (settingsError) {
                                 return callback(settingsError);
                             } else {
@@ -437,7 +442,8 @@ class AlAzureMaster {
                         COLLECTOR_HOST_ID: hostId,
                         COLLECTOR_SOURCE_ID: sourceId
                     };
-                    master.updateAppSettings(newSettings, 
+                    m_util.updateAppSettings(newSettings,
+                        master.azureClientObject, 
                         function(settingsError) {
                             if (settingsError) {
                                 return callback(settingsError);

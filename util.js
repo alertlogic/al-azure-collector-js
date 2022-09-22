@@ -9,7 +9,7 @@
  */
  
 const path = require('path');
-
+const async = require('async');
 /**
  *  @function
  *  returns Azure token cache filename.
@@ -52,8 +52,51 @@ const verifyObjProps = function (obj, expectedProps) {
     return false;
 }
 
+ const getAppSettings = function (azureClientObject, callback) {
+        return azureClientObject.azureWebsiteClient.webApps.listApplicationSettings(
+            azureClientObject.resourceGroup, azureClientObject.webAppName, null,
+            function(err, result, request, response) {
+                if (err) {
+                    return callback(err);
+                } else {
+                    return callback(null, result);
+                }
+        });
+    }
+
+ const setAppSettings = function (settings, azureClientObject, callback) {
+        azureClientObject.azureWebsiteClient.webApps.updateApplicationSettings(
+            azureClientObject.resourceGroup, azureClientObject.webAppName, settings, null,
+            function(err, result, request, response) {
+                if (err) {
+                    return callback(err);
+                } else {
+                    return callback(null);
+                }
+        });
+    }
+   
+ const updateAppSettings = function (newSettings, azureClientObject, callback) {
+        async.waterfall([
+            function(callback) {
+                return getAppSettings(azureClientObject,callback);
+            },
+            function(appSettings, callback) {
+                var updatedProps = Object.assign({}, appSettings.properties, newSettings);
+                var updatedEnv = Object.assign({}, process.env, newSettings);
+                process.env = updatedEnv;
+                appSettings.properties = updatedProps;
+                return setAppSettings(appSettings,azureClientObject,callback);
+            }],
+            callback
+        );
+    }
+
+
 
 module.exports = {
         getADCacheFilename: getADCacheFilename,
-        verifyObjProps: verifyObjProps
+        verifyObjProps: verifyObjProps,
+        updateAppSettings: updateAppSettings
+
 };

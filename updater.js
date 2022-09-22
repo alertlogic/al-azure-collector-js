@@ -8,11 +8,13 @@
  * -----------------------------------------------------------------------------
  */
 'use strict';
-
+const async = require('async');
 const { WebSiteManagementClient } = require('@azure/arm-appservice');
 const { MSIAppServiceTokenCredentials, ApplicationTokenCredentials } = require('@azure/ms-rest-nodeauth');
 const WebSiteManagement = require('@azure/arm-appservice');
-const async = require('async');
+
+
+const m_util = require('./util');
 /**
  * @class
  * Helper class for Updater function.
@@ -36,7 +38,11 @@ class AlAzureUpdater {
         this._resourceGroup = resourceGroup ? resourceGroup : process.env.APP_RESOURCE_GROUP;
         this._webAppName = webAppName ? webAppName : process.env.WEBSITE_SITE_NAME;
         this._azureWebsiteClient = new WebSiteManagementClient(this._getAzureCredentials(), this._subscriptionId);
-
+        this.azureClientObject = {
+            azureWebsiteClient: this._azureWebsiteClient,
+            webAppName: this._webAppName,
+            resourceGroup: this._resourceGroup
+        }
     }
 
     _getAzureCredentials() {
@@ -57,62 +63,32 @@ class AlAzureUpdater {
         return webSiteClient.webApps.syncRepository(this._resourceGroup, this._webAppName, callback);
     }
 
-    setEnvForMigration(envObject, callback) {
-        if (process.env.FUNCTIONS_EXTENSION_VERSION) {
-            var updateEnv = envObject;
-            this.updateAppSettings(updateEnv, function (settingsError) {
-                if (settingsError) {
-                    return callback(settingsError);
-                } else {
-                    return callback(null);
-                }
-            });
-        }
+    setEnvConfigChanges(envObject, callback) {
+        var updateEnv = envObject;
+        m_util.updateAppSettings(updateEnv, this.azureClientObject, function (settingsError) {
+            if (settingsError) {
+                return callback(settingsError);
+            } else {
+                return callback(null);
+            }
+        });
     }
 
-    getAppSettings(callback) {
-        return this._azureWebsiteClient.webApps.listApplicationSettings(
-            this._resourceGroup, this._webAppName, null,
-            function (err, result, request, response) {
-                if (err) {
-                    return callback(err);
-                } else {
-                    return callback(null, result);
-                }
-            });
-    }
-
-    setAppSettings(settings, callback) {
-        this._azureWebsiteClient.webApps.updateApplicationSettings(
-            this._resourceGroup, this._webAppName, settings, null,
-            function (err, result, request, response) {
-                if (err) {
-                    return callback(err);
-                } else {
-                    return callback(null);
-                }
-            });
-    }
-
-    updateAppSettings(newSettings, callback) {
+    run(envObject, callback) {
         let updater = this;
         async.waterfall([
             function (callback) {
-                return updater.getAppSettings(callback);
+                return updater.syncWebApp(callback);
             },
-            function (appSettings, callback) {
-                var updatedProps = Object.assign({}, appSettings.properties, newSettings);
-                var updatedEnv = Object.assign({}, process.env, newSettings);
-                process.env = updatedEnv;
-                appSettings.properties = updatedProps;
-                return updater.setAppSettings(appSettings, callback);
+            function (siteSync, callback) {
+                return updater.setEnvConfigChanges(envObject, callback);
             }],
             callback
         );
+
     }
-
-
 }
 module.exports = {
     AlAzureUpdater: AlAzureUpdater
 };
+
