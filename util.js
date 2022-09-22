@@ -77,17 +77,17 @@ const verifyObjProps = function (obj, expectedProps) {
     }
    
  const updateAppSettings = function (newSettings, azureClientObject, callback) {
-        async.waterfall([
-            function(callback) {
-                return getAppSettings(azureClientObject,callback);
-            },
-            function(appSettings, callback) {
-                var updatedProps = Object.assign({}, appSettings.properties, newSettings);
-                var updatedEnv = Object.assign({}, process.env, newSettings);
-                process.env = updatedEnv;
-                appSettings.properties = updatedProps;
-                return setAppSettings(appSettings,azureClientObject,callback);
-            }],
+     async.waterfall([
+         function (asyncCallback) {
+             return getAppSettings(azureClientObject, asyncCallback);
+         },
+         function (appSettings, asyncCallback) {
+             var updatedProps = Object.assign({}, appSettings.properties, newSettings);
+             var updatedEnv = Object.assign({}, process.env, newSettings);
+             process.env = updatedEnv;
+             appSettings.properties = updatedProps;
+             return setAppSettings(appSettings, azureClientObject, asyncCallback);
+         }],
             callback
         );
     }
