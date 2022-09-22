@@ -75,7 +75,7 @@ class AlAzureUpdater {
     }
 
     run(envObject, callback) {
-        let updater = this;
+        var updater = this;
         async.waterfall([
             function (callback) {
                 return updater.syncWebApp(callback);
