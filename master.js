@@ -161,47 +161,6 @@ class AlAzureMaster {
                 false, MASTER_RETRY_OPTS);
     }
     
-    updateAppSettings(newSettings, callback) {
-        var master = this;
-        async.waterfall([
-            function(callback) {
-                return master.getAppSettings(callback);
-            },
-            function(appSettings, callback) {
-                var updatedProps = Object.assign({}, appSettings.properties, newSettings);
-                var updatedEnv = Object.assign({}, process.env, newSettings);
-                process.env = updatedEnv;
-                appSettings.properties = updatedProps;
-                return master.setAppSettings(appSettings, callback);
-            }],
-            callback
-        );
-    }
-
-    getAppSettings(callback) {
-        return this._azureWebsiteClient.webApps.listApplicationSettings(
-            this._resourceGroup, this._webAppName, null,
-            function(err, result, request, response) {
-                if (err) {
-                    return callback(err);
-                } else {
-                    return callback(null, result);
-                }
-        });
-    }
-
-    setAppSettings(settings, callback) {
-        this._azureWebsiteClient.webApps.updateApplicationSettings(
-            this._resourceGroup, this._webAppName, settings, null,
-            function(err, result, request, response) {
-                if (err) {
-                    return callback(err);
-                } else {
-                    return callback(null);
-                }
-        });
-    }
-        
     /**
      *  @function updateAlEndpoints - retrieves Alert Logic service endpoints.
      *  
