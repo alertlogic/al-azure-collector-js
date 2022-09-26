@@ -93,19 +93,19 @@ class AlAzureUpdater {
         var updater = this;
         async.waterfall([
             function (asyncCallback) {
-                 updater.syncWebApp((err,siteSync)=>{
-                 return asyncCallback(err,siteSync);
-                 });
+                updater.syncWebApp((err, siteSync) => {
+                    return asyncCallback(err, siteSync);
+                });
             },
-              function (siteSync,asyncCallback) {
-                 updater.readEnvFile( (err,resultEnv)=>{
-                 return asyncCallback(err,resultEnv);
-                 });
+            function (siteSync, asyncCallback) {
+                updater.readEnvFile((err, resultEnv) => {
+                    return asyncCallback(err, resultEnv);
+                });
             },
             function (resultEnv, asyncCallback) {
-                 updater.setEnvConfigChanges(resultEnv.Runtime, (err,result)=>{
-                 return asyncCallback(err,result);
-                 });
+                updater.setEnvConfigChanges(resultEnv.Runtime, (err, result) => {
+                    return asyncCallback(err, result);
+                });
             }],
             callback
         );
