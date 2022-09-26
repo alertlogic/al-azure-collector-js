@@ -75,14 +75,17 @@ class AlAzureUpdater {
     }
     
     readEnvFile(callback){
-        fs.readFile(process.cwd() + "/"+ process.env.AZURE_FUN_UPDATE_CONFIG_NAME,'utf-8',function (err, data) {
-          if (err) {
-             return callback(err);
-            } else{
-              const envData = JSON.parse(data);
-              return callback(null,envData);  
+        fs.readFile(process.cwd() + "/" + process.env.AZURE_FUN_UPDATE_CONFIG_NAME, 'utf-8', function (err, data) {
+            if (err) {
+                return callback(err);
+            } else {
+                try {
+                    const envData = JSON.parse(data);
+                    return callback(null, envData);   
+                } catch (error) {
+                    return callback(error);   
+                }
             }
-
         });
     }
     
