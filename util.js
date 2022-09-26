@@ -97,6 +97,8 @@ const verifyObjProps = function (obj, expectedProps) {
 module.exports = {
         getADCacheFilename: getADCacheFilename,
         verifyObjProps: verifyObjProps,
-        updateAppSettings: updateAppSettings
+        updateAppSettings: updateAppSettings,
+        getAppSettings: getAppSettings,
+        setAppSettings: setAppSettings
 
 };
