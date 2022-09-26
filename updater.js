@@ -111,6 +111,7 @@ class AlAzureUpdater {
         );
     }
 }
+
 module.exports = {
     AlAzureUpdater: AlAzureUpdater
 };
