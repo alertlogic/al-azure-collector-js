@@ -136,6 +136,11 @@ class AlAzureMaster {
         }
 
         this._azureWebsiteClient = new WebSiteManagementClient(this._azureCreds, this._subscriptionId);
+        this.azureWebsiteClientObject = {
+            azureWebsiteClient: this._azureWebsiteClient,
+            webAppName: this._webAppName,
+            resourceGroup: this._resourceGroup
+        }
 
     }
 
@@ -154,47 +159,6 @@ class AlAzureMaster {
                 'azure',
                 this._collectorType, 
                 false, MASTER_RETRY_OPTS);
-    }
-    
-    updateAppSettings(newSettings, callback) {
-        var master = this;
-        async.waterfall([
-            function(callback) {
-                return master.getAppSettings(callback);
-            },
-            function(appSettings, callback) {
-                var updatedProps = Object.assign({}, appSettings.properties, newSettings);
-                var updatedEnv = Object.assign({}, process.env, newSettings);
-                process.env = updatedEnv;
-                appSettings.properties = updatedProps;
-                return master.setAppSettings(appSettings, callback);
-            }],
-            callback
-        );
-    }
-
-    getAppSettings(callback) {
-        return this._azureWebsiteClient.webApps.listApplicationSettings(
-            this._resourceGroup, this._webAppName, null,
-            function(err, result, request, response) {
-                if (err) {
-                    return callback(err);
-                } else {
-                    return callback(null, result);
-                }
-        });
-    }
-
-    setAppSettings(settings, callback) {
-        this._azureWebsiteClient.webApps.updateApplicationSettings(
-            this._resourceGroup, this._webAppName, settings, null,
-            function(err, result, request, response) {
-                if (err) {
-                    return callback(err);
-                } else {
-                    return callback(null);
-                }
-        });
     }
     
     /**
@@ -232,7 +196,7 @@ class AlAzureMaster {
                             APP_AZCOLLECT_ENDPOINT : mapsResult[0].azcollect,
                             APP_INGEST_ENDPOINT : mapsResult[1].ingest
                         };
-                        master.updateAppSettings(endpoints, function(settingsError) {
+                        m_util.updateAppSettings(endpoints, master.azureWebsiteClientObject,function(settingsError) {
                             if (settingsError) {
                                 return callback(settingsError);
                             } else {
@@ -437,7 +401,8 @@ class AlAzureMaster {
                         COLLECTOR_HOST_ID: hostId,
                         COLLECTOR_SOURCE_ID: sourceId
                     };
-                    master.updateAppSettings(newSettings, 
+                    m_util.updateAppSettings(newSettings,
+                        master.azureWebsiteClientObject, 
                         function(settingsError) {
                             if (settingsError) {
                                 return callback(settingsError);

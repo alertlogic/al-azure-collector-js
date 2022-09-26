@@ -8,11 +8,13 @@
  * -----------------------------------------------------------------------------
  */
 'use strict';
-
-const {WebSiteManagementClient} = require('@azure/arm-appservice');
-const {MSIAppServiceTokenCredentials, ApplicationTokenCredentials} = require('@azure/ms-rest-nodeauth');
+const async = require('async');
+const { WebSiteManagementClient } = require('@azure/arm-appservice');
+const { MSIAppServiceTokenCredentials, ApplicationTokenCredentials } = require('@azure/ms-rest-nodeauth');
 const WebSiteManagement = require('@azure/arm-appservice');
+const fs = require('fs');
 
+const m_util = require('./util');
 /**
  * @class
  * Helper class for Updater function.
@@ -28,15 +30,21 @@ const WebSiteManagement = require('@azure/arm-appservice');
  *
  */
 class AlAzureUpdater {
-    constructor({clientId, domain, clientSecret, subscriptionId, resourceGroup, webAppName} = {}) {
+    constructor({ clientId, domain, clientSecret, subscriptionId, resourceGroup, webAppName } = {}) {
         this._clientId = clientId ? clientId : process.env.CUSTOMCONNSTR_APP_CLIENT_ID;
         this._domain = domain ? domain : process.env.APP_TENANT_ID;
         this._clientSecret = clientSecret ? clientSecret : process.env.CUSTOMCONNSTR_APP_CLIENT_SECRET;
         this._subscriptionId = subscriptionId ? subscriptionId : process.env.APP_SUBSCRIPTION_ID;
         this._resourceGroup = resourceGroup ? resourceGroup : process.env.APP_RESOURCE_GROUP;
         this._webAppName = webAppName ? webAppName : process.env.WEBSITE_SITE_NAME;
+        this._azureWebsiteClient = new WebSiteManagementClient(this._getAzureCredentials(), this._subscriptionId);
+        this.azureWebsiteClientObject = {
+            azureWebsiteClient: this._azureWebsiteClient,
+            webAppName: this._webAppName,
+            resourceGroup: this._resourceGroup
+        }
     }
-    
+
     _getAzureCredentials() {
         if (process.env.MSI_ENDPOINT && process.env.MSI_SECRET) {
             const options = {
@@ -48,13 +56,62 @@ class AlAzureUpdater {
             return new ApplicationTokenCredentials(this._clientId, this._domain, this._clientSecret);
         }
     }
-    
+
     syncWebApp(callback) {
         const credentials = this._getAzureCredentials();
         const webSiteClient = new WebSiteManagementClient(credentials, this._subscriptionId);
         return webSiteClient.webApps.syncRepository(this._resourceGroup, this._webAppName, callback);
     }
+
+    setEnvConfigChanges(envObject, callback) {
+        var updateEnv = envObject;
+        m_util.updateAppSettings(updateEnv, this.azureWebsiteClientObject, function (settingsError) {
+            if (settingsError) {
+                return callback(settingsError);
+            } else {
+                return callback(null);
+            }
+        });
+    }
+    
+    readEnvFile(callback){
+        fs.readFile(process.cwd() + "/" + process.env.AZURE_FUN_UPDATE_CONFIG_NAME, 'utf-8', function (err, data) {
+            if (err) {
+                return callback(err);
+            } else {
+                try {
+                    const envData = JSON.parse(data);
+                    return callback(null, envData);   
+                } catch (error) {
+                    return callback(error);   
+                }
+            }
+        });
+    }
+    
+    run(callback) {
+        var updater = this;
+        async.waterfall([
+            function (asyncCallback) {
+                updater.syncWebApp((err, siteSync) => {
+                    return asyncCallback(err, siteSync);
+                });
+            },
+            function (siteSync, asyncCallback) {
+                updater.readEnvFile((err, resultEnv) => {
+                    return asyncCallback(err, resultEnv);
+                });
+            },
+            function (resultEnv, asyncCallback) {
+                updater.setEnvConfigChanges(resultEnv.Runtime, (err, result) => {
+                    return asyncCallback(err, result);
+                });
+            }],
+            callback
+        );
+    }
 }
+
 module.exports = {
     AlAzureUpdater: AlAzureUpdater
 };
