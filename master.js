@@ -136,7 +136,7 @@ class AlAzureMaster {
         }
 
         this._azureWebsiteClient = new WebSiteManagementClient(this._azureCreds, this._subscriptionId);
-        this.azureClientObject = {
+        this.azureWebsiteClientObject = {
             azureWebsiteClient: this._azureWebsiteClient,
             webAppName: this._webAppName,
             resourceGroup: this._resourceGroup
@@ -196,7 +196,7 @@ class AlAzureMaster {
                             APP_AZCOLLECT_ENDPOINT : mapsResult[0].azcollect,
                             APP_INGEST_ENDPOINT : mapsResult[1].ingest
                         };
-                        m_util.updateAppSettings(endpoints, master.azureClientObject,function(settingsError) {
+                        m_util.updateAppSettings(endpoints, master.azureWebsiteClientObject,function(settingsError) {
                             if (settingsError) {
                                 return callback(settingsError);
                             } else {
@@ -402,7 +402,7 @@ class AlAzureMaster {
                         COLLECTOR_SOURCE_ID: sourceId
                     };
                     m_util.updateAppSettings(newSettings,
-                        master.azureClientObject, 
+                        master.azureWebsiteClientObject, 
                         function(settingsError) {
                             if (settingsError) {
                                 return callback(settingsError);

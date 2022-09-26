@@ -12,7 +12,7 @@ const async = require('async');
 const { WebSiteManagementClient } = require('@azure/arm-appservice');
 const { MSIAppServiceTokenCredentials, ApplicationTokenCredentials } = require('@azure/ms-rest-nodeauth');
 const WebSiteManagement = require('@azure/arm-appservice');
-
+const fs = require('fs');
 
 const m_util = require('./util');
 /**
@@ -38,7 +38,7 @@ class AlAzureUpdater {
         this._resourceGroup = resourceGroup ? resourceGroup : process.env.APP_RESOURCE_GROUP;
         this._webAppName = webAppName ? webAppName : process.env.WEBSITE_SITE_NAME;
         this._azureWebsiteClient = new WebSiteManagementClient(this._getAzureCredentials(), this._subscriptionId);
-        this.azureClientObject = {
+        this.azureWebsiteClientObject = {
             azureWebsiteClient: this._azureWebsiteClient,
             webAppName: this._webAppName,
             resourceGroup: this._resourceGroup
@@ -65,7 +65,7 @@ class AlAzureUpdater {
 
     setEnvConfigChanges(envObject, callback) {
         var updateEnv = envObject;
-        m_util.updateAppSettings(updateEnv, this.azureClientObject, function (settingsError) {
+        m_util.updateAppSettings(updateEnv, this.azureWebsiteClientObject, function (settingsError) {
             if (settingsError) {
                 return callback(settingsError);
             } else {
@@ -73,18 +73,36 @@ class AlAzureUpdater {
             }
         });
     }
-    run(envObject, callback) {
+    
+    readEnvFile(callback){
+        fs.readFile(process.cwd() + "/"+ process.env.AZURE_FUN_UPDATE_CONFIG_NAME,'utf-8',function (err, data) {
+          if (err) {
+             return callback(err);
+            } else{
+              const envData = JSON.parse(data);
+              return callback(null,envData);  
+            }
+
+        });
+    }
+    
+    run(callback) {
         var updater = this;
         async.waterfall([
             function (asyncCallback) {
-                updater.syncWebApp((err, result) => {
-                    return asyncCallback(err, result);
-                });
+                 updater.syncWebApp((err,siteSync)=>{
+                 return asyncCallback(err,siteSync);
+                 });
             },
-            function (result, asyncCallback) {
-                updater.setEnvConfigChanges(envObject, (err, result) => {
-                    return asyncCallback(err, result);
-                });
+              function (siteSync,asyncCallback) {
+                 updater.readEnvFile( (err,resultEnv)=>{
+                 return asyncCallback(err,resultEnv);
+                 });
+            },
+            function (resultEnv, asyncCallback) {
+                 updater.setEnvConfigChanges(resultEnv.Runtime, (err,result)=>{
+                 return asyncCallback(err,result);
+                 });
             }],
             callback
         );
