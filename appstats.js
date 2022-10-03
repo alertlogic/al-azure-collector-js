@@ -25,7 +25,56 @@ const MAX_STATS_PAGES = 10;
 const STAT_TYPES_LOG = 1;
 
 const DEFAULT_STATS_QUEUE_NAME = 'alertlogic-stats';
+class AzureAppStats {
+    constructor(functionNames = [], _tableService) {
+        this._functionNames = functionNames;
+    }
+    
+    _getFunctionStats(functionName, timestamp, callback) {
+        var obj = {};
+        obj[functionName] = {
+            invocations : 0,
+            errors : 0
+        };
+        return callback(null, obj);
+    };
 
+    /**
+     * @function
+     * @param {String} timestamp -  for example, '2017-12-22T14:31:39'. Usually Master function timer trigger value is used.
+     * 
+     * @return callback(err, stats)
+     * @param {Object} stats - for example,
+     * {
+     *   statistics: [
+     *     {"Master":
+     *       {"invocations":2,"errors":0}
+     *      },
+     *      {"Collector":
+     *          {"invocations":10,"errors":1}
+     *      },
+     *      {"Updater":
+     *          {"invocations":0,"errors":0}
+     *      }
+     *   ]
+     * }
+     */
+    getAppStats(timestamp, callback) {
+        var appStats = this;
+        async.map(appStats._functionNames,
+            function(fname, callback){
+                appStats._getFunctionStats(fname, timestamp, callback); 
+            },
+            function (mapErr, mapsResult) {
+                if (mapErr) {
+                    return callback(mapErr);
+                } else {
+                    return callback(null, {statistics: mapsResult});
+                }
+            });
+    };
+
+}
 
 /**
  * @class
@@ -34,16 +83,14 @@ const DEFAULT_STATS_QUEUE_NAME = 'alertlogic-stats';
  * @constructor
  * @param {List} functionNames - (optional) a list of Azure Function names. Default is [].
  **/
-class AzureWebAppStats {
+class AzureWebAppStats extends AzureAppStats {
     constructor(functionNames = []) {
-        this._functionNames = functionNames;
-        if (process.env.FUNCTIONS_EXTENSION_VERSION !== '~4') {
-            const storageParams = parse(process.env.AzureWebJobsStorage);
-            this._tableService = azureStorage.createTableService(
-                storageParams.AccountName,
-                storageParams.AccountKey,
-                storageParams.AccountName + '.table.core.windows.net');
-        }
+        super(functionNames);
+        const storageParams = parse(process.env.AzureWebJobsStorage);
+        this._tableService = azureStorage.createTableService(
+            storageParams.AccountName, 
+            storageParams.AccountKey, 
+            storageParams.AccountName + '.table.core.windows.net');
     }
 
     getTableService() {
@@ -176,6 +223,12 @@ class AzureWebAppStats {
             });
     };
 
+}
+
+class AzureAppInsightStats extends AzureAppStats {
+    constructor(functionNames = []) {
+        super(functionNames);
+    }
 }
 
 class CollectionStatRecord {
@@ -362,5 +415,6 @@ class AzureCollectionStats {
 module.exports = {
     AzureWebAppStats: AzureWebAppStats,
     AzureCollectionStats: AzureCollectionStats,
-    CollectionStatRecord: CollectionStatRecord
+    CollectionStatRecord: CollectionStatRecord,
+    AzureAppInsightStats: AzureAppInsightStats
 };
