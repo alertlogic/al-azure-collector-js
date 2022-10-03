@@ -153,16 +153,9 @@ class AzureWebAppStats extends AzureAppStats {
             contToken.token,
             function (error, result) {
                 if (error) {
-                    if (process.env.FUNCTIONS_EXTENSION_VERSION === '~4') {
-                        obj[functionName] = {
-                            invocations: 0,
-                            errors: 0
-                        };
-                    } else {
-                        obj[functionName] = {
-                            error: `${error}`
-                        };
-                    }
+                    obj[functionName] = {
+                        error: `${error}`
+                    };
                     return callback(null, obj);
                 } else {
                     if (result.continuationToken && contToken.pageNum < MAX_STATS_PAGES) {
