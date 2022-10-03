@@ -105,7 +105,10 @@ class AzureWebAppStats {
             function(error, result) {
                 if (error) {
                     if(process.env.FUNCTIONS_EXTENSION_VERSION === '~4'){
-                        obj[functionName] = appstats;
+                        obj[functionName] = {
+                            invocations : 0,
+                            errors : 0
+                        };
                     }else{
                         obj[functionName] = {
                             error : `${error}`
