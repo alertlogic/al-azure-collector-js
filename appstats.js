@@ -37,21 +37,23 @@ const DEFAULT_STATS_QUEUE_NAME = 'alertlogic-stats';
 class AzureWebAppStats {
     constructor(functionNames = []) {
         this._functionNames = functionNames;
-        const storageParams = parse(process.env.AzureWebJobsStorage);
-        this._tableService = azureStorage.createTableService(
-            storageParams.AccountName, 
-            storageParams.AccountKey, 
-            storageParams.AccountName + '.table.core.windows.net');
+        if (process.env.FUNCTIONS_EXTENSION_VERSION !== '~4') {
+            const storageParams = parse(process.env.AzureWebJobsStorage);
+            this._tableService = azureStorage.createTableService(
+                storageParams.AccountName,
+                storageParams.AccountKey,
+                storageParams.AccountName + '.table.core.windows.net');
+        }
     }
-    
+
     getTableService() {
         return this._tableService;
     }
-    
+
     getLogTableName() {
         return 'AzureWebJobsHostLogs' + moment.utc().format('YYYYMM');
     }
-    
+
     _getInvocationsQuery(functionName, timestamp) {
         var functionFilter = TableQuery.stringFilter(
             'FunctionName',
@@ -65,26 +67,26 @@ class AzureWebAppStats {
             dateFilter,
             TableUtilities.TableOperators.AND,
             functionFilter);
-            
+
         return new TableQuery().where(whereFilter);
     };
 
     _getInvocationStats(entities, accStats) {
         accStats.invocations += entities.length;
-        
-        return entities.reduce(function(acc, current) {
+
+        return entities.reduce(function (acc, current) {
             if (current.ErrorDetails) {
                 acc.errors++;
             }
             return acc;
         },
-        accStats);
+            accStats);
     };
 
     _getFunctionStats(functionName, timestamp, callback) {
         let accStats = {
-            invocations : 0,
-            errors : 0
+            invocations: 0,
+            errors: 0
         };
         let initialToken = {
             token: null,
@@ -97,21 +99,21 @@ class AzureWebAppStats {
         var tableService = this._tableService;
         var appstats = this;
         var obj = {};
-        
+
         tableService.queryEntities(
-            appstats.getLogTableName(), 
+            appstats.getLogTableName(),
             appstats._getInvocationsQuery(functionName, timestamp),
             contToken.token,
-            function(error, result) {
+            function (error, result) {
                 if (error) {
-                    if(process.env.FUNCTIONS_EXTENSION_VERSION === '~4'){
+                    if (process.env.FUNCTIONS_EXTENSION_VERSION === '~4') {
                         obj[functionName] = {
-                            invocations : 0,
-                            errors : 0
+                            invocations: 0,
+                            errors: 0
                         };
-                    }else{
+                    } else {
                         obj[functionName] = {
-                            error : `${error}`
+                            error: `${error}`
                         };
                     }
                     return callback(null, obj);
@@ -162,14 +164,14 @@ class AzureWebAppStats {
     getAppStats(timestamp, callback) {
         var appstats = this;
         async.map(appstats._functionNames,
-            function(fname, callback){
-                appstats._getFunctionStats(fname, timestamp, callback); 
+            function (fname, callback) {
+                appstats._getFunctionStats(fname, timestamp, callback);
             },
             function (mapErr, mapsResult) {
                 if (mapErr) {
                     return callback(mapErr);
                 } else {
-                    return callback(null, {statistics: mapsResult});
+                    return callback(null, { statistics: mapsResult });
                 }
             });
     };
@@ -183,14 +185,14 @@ class CollectionStatRecord {
             events: 0
         };
     };
-    
+
     reset() {
         this.log = {
             bytes: 0,
             events: 0
         };
     };
-    
+
     add(addStats) {
         if (addStats instanceof CollectionStatRecord) {
             this.log.bytes += addStats.log.bytes;
@@ -198,7 +200,7 @@ class CollectionStatRecord {
         }
         return this;
     };
-    
+
     subtract(subtractStats) {
         if (subtractStats instanceof CollectionStatRecord) {
             this.log.bytes -= subtractStats.log.bytes > this.log.bytes ? this.log.bytes : subtractStats.log.bytes;
@@ -206,7 +208,7 @@ class CollectionStatRecord {
         }
         return this;
     };
-    
+
     // Update with stat messages from the Storage queue.
     // msg.messageText is a JSON like.
     // {invocationId : invId,
@@ -216,15 +218,15 @@ class CollectionStatRecord {
     //
     _aggregateStats(statsMessages) {
         var initStats = new CollectionStatRecord();
-        return statsMessages.reduce(function(acc, curr) {
+        return statsMessages.reduce(function (acc, curr) {
             try {
                 const stat = JSON.parse(curr.messageText);
-                switch(stat.type) {
+                switch (stat.type) {
                     case STAT_TYPES_LOG:
                         acc.log.bytes += stat.bytes;
                         acc.log.events += stat.events;
                         break;
-                        
+
                     default:
                         break;
                 };
@@ -234,12 +236,12 @@ class CollectionStatRecord {
             }
         }, initStats);
     };
-    
+
     aggregateAdd(statsMessages) {
         const aggrStats = this._aggregateStats(statsMessages);
         return this.add(aggrStats);
     };
-    
+
     aggregateSubtract(statsMessages) {
         const aggrStats = this._aggregateStats(statsMessages);
         return this.subtract(aggrStats);
@@ -247,7 +249,7 @@ class CollectionStatRecord {
 }
 
 class AzureCollectionStats {
-    constructor(context, {statsQueueName, outputQueueBinding} = {}) {
+    constructor(context, { statsQueueName, outputQueueBinding } = {}) {
         const storageParams = parse(process.env.AzureWebJobsStorage);
         this._context = context;
         this._statsQueueName = statsQueueName ? statsQueueName :
@@ -258,11 +260,11 @@ class AzureCollectionStats {
             storageParams.AccountKey,
             storageParams.AccountName + '.queue.core.windows.net');
     }
-    
+
     getQueueService() {
         return this._queueService;
     };
-    
+
     _getStatsBatch(callback) {
         var stats = this;
         var queueService = stats._queueService;
@@ -272,15 +274,15 @@ class AzureCollectionStats {
             numOfMessages: STAT_MSG_NUMBER_PER_BATCH
         };
         var aggrStats = new CollectionStatRecord();
-        
-        queueService.getMessages(queueName, options, function(error, statsMessages) {
-            if(!error) {
+
+        queueService.getMessages(queueName, options, function (error, statsMessages) {
+            if (!error) {
                 aggrStats.aggregateAdd(statsMessages);
-                async.filter(statsMessages, function(msg, callback) {
-                    queueService.deleteMessage(queueName, msg.messageId, msg.popReceipt, function(err) {
+                async.filter(statsMessages, function (msg, callback) {
+                    queueService.deleteMessage(queueName, msg.messageId, msg.popReceipt, function (err) {
                         return callback(null, err);
                     });
-                }, function(error, undeleted) {
+                }, function (error, undeleted) {
                     aggrStats.aggregateSubtract(undeleted);
                     return callback(null, aggrStats);
                 });
@@ -291,27 +293,27 @@ class AzureCollectionStats {
             }
         });
     };
-    
+
     getStats(callback) {
         var stats = this;
         const queueService = stats._queueService;
         const queueName = stats._statsQueueName;
         var resultStats = new CollectionStatRecord();
         var resultError = '';
-        
-        queueService.getQueueMetadata(queueName, function(error, metadata) {
+
+        queueService.getQueueMetadata(queueName, function (error, metadata) {
             if (!error) {
                 var processed = 0;
-                async.doWhilst(function(callback) {
-                    stats._getStatsBatch(function(error, aggrStatsBatch) {
+                async.doWhilst(function (callback) {
+                    stats._getStatsBatch(function (error, aggrStatsBatch) {
                         resultError = error ? error + resultError : resultError;
                         resultStats.add(aggrStatsBatch);
                         processed += STAT_MSG_NUMBER_PER_BATCH;
                         return callback();
                     });
-                }, function() {
+                }, function () {
                     return processed < metadata.approximateMessageCount;
-                }, function() {
+                }, function () {
                     if (!resultError) {
                         return callback(null, resultStats);
                     } else {
@@ -325,18 +327,18 @@ class AzureCollectionStats {
             }
         });
     };
-    
+
     putLogStats(collectedBytes, collectedEvents, callback) {
-        const invId = this._context.executionContext.invocationId; 
+        const invId = this._context.executionContext.invocationId;
         const logStats = {
-            invocationId : invId,
+            invocationId: invId,
             type: STAT_TYPES_LOG,
             bytes: collectedBytes,
             events: collectedEvents
         };
         return this._putStats(logStats, callback);
     };
-    
+
     _putStats(collectionStats, callback) {
         var stats = this;
         const queueName = stats._statsQueueName;
@@ -347,10 +349,10 @@ class AzureCollectionStats {
             return callback(null);
         } else {
             return async.waterfall([
-                function(callback) {
+                function (callback) {
                     return stats._queueService.createQueueIfNotExists(queueName, callback);
                 },
-                function(metadata, resp, callback) {
+                function (metadata, resp, callback) {
                     return stats._queueService.createMessage(queueName, collectionStatsString, callback);
                 },
             ], callback);
