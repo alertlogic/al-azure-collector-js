@@ -411,6 +411,7 @@ describe('Master tests', function() {
             
             // Expected Alert Logic parameters
             process.env.WEBSITE_HOSTNAME = 'app-name';
+            process.env.FUNCTIONS_EXTENSION_VERSION = '~3';
             process.env.CUSTOMCONNSTR_APP_AL_ACCESS_KEY_ID = mock.AL_KEY_ID;
             process.env.CUSTOMCONNSTR_APP_AL_SECRET_KEY = mock.AL_SECRET;
             process.env.CUSTOMCONNSTR_APP_AL_API_ENDPOINT = mock.AL_API_ENDPOINT;
