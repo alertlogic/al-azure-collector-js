@@ -120,7 +120,7 @@ class AlAzureMaster {
         this._webAppName = webAppName ? webAppName : process.env.WEBSITE_SITE_NAME;
         this._appFilterJson = process.env.APP_FILTER_JSON ? process.env.APP_FILTER_JSON : '';
         this._appFilterRegex = process.env.APP_FILTER_REGEX ? process.env.APP_FILTER_REGEX : '';
-        if (process.env.FUNCTIONS_EXTENSION_VERSION !== '~3') {
+        if (process.env.FUNCTIONS_EXTENSION_VERSION > '~3') {
             this._appStats = new AzureAppInsightStats(collectorAzureFunNames);
         } else {
             this._appStats = new AzureWebAppStats(collectorAzureFunNames);

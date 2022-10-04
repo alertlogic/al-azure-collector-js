@@ -30,7 +30,7 @@ class AzureAppStats {
         this._functionNames = functionNames;
     }
     
-    _getFunctionStats(functionName, timestamp, callback) {
+    getFunctionStats(functionName, timestamp, callback) {
         var obj = {};
         obj[functionName] = {
             invocations : 0,
@@ -63,7 +63,7 @@ class AzureAppStats {
         var appStats = this;
         async.map(appStats._functionNames,
             function(fname, callback){
-                appStats._getFunctionStats(fname, timestamp, callback); 
+                appStats.getFunctionStats(fname, timestamp, callback); 
             },
             function (mapErr, mapsResult) {
                 if (mapErr) {
@@ -130,7 +130,7 @@ class AzureWebAppStats extends AzureAppStats {
             accStats);
     };
 
-    _getFunctionStats(functionName, timestamp, callback) {
+    getFunctionStats(functionName, timestamp, callback) {
         let accStats = {
             invocations: 0,
             errors: 0
@@ -205,7 +205,7 @@ class AzureWebAppStats extends AzureAppStats {
         var appstats = this;
         async.map(appstats._functionNames,
             function (fname, callback) {
-                appstats._getFunctionStats(fname, timestamp, callback);
+                appstats.getFunctionStats(fname, timestamp, callback);
             },
             function (mapErr, mapsResult) {
                 if (mapErr) {
