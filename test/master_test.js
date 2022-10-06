@@ -15,6 +15,7 @@ const alcollector = require('@alertlogic/al-collector-js');
 
 const AlAzureMaster = require('../master').AlAzureMaster;
 const AzureWebAppStats = require('../appstats').AzureWebAppStats;
+const AzureAppInsightStats = require('../appstats').AzureAppInsightStats;
 const CollectionStatRecord = require('../appstats').CollectionStatRecord;
 const mock = require('./mock');
 
@@ -351,6 +352,7 @@ describe('Master tests', function() {
     
     describe('Checkin tests', function() {
         var fakeStats;
+        var fakeAppInsightStats;
         
         beforeEach(function() {
             // Mock Azure HTTP calls
@@ -404,11 +406,17 @@ describe('Master tests', function() {
                         return resolve(mock.CHECKIN_RESPONSE_OK);
                     });
                 });
+
             fakeStats = sinon.stub(AzureWebAppStats.prototype, 'getAppStats').callsFake(
                 function fakeFn(path, callback) {
                     return callback(null, mock.INVOCATION_STATS);
-            });
-            
+                });
+
+            fakeAppInsightStats = sinon.stub(AzureAppInsightStats.prototype, 'getAppStats').callsFake(
+                function fakeFn(path, callback) {
+                    return callback(null, mock.EMPTY_INVOCATION_STATS);
+                });
+
             // Expected Alert Logic parameters
             process.env.WEBSITE_HOSTNAME = 'app-name';
             process.env.FUNCTIONS_EXTENSION_VERSION = '~3';
@@ -435,6 +443,7 @@ describe('Master tests', function() {
         
         afterEach(function(done) {
             fakeStats.restore();
+            fakeAppInsightStats.restore();
             fakePost.resetHistory();
             fs.unlink(mock.AL_TOKEN_CACHE_FILENAME, function(err){
                 done();
@@ -461,6 +470,34 @@ describe('Master tests', function() {
                 const expectedUrl = '/azure/ehub/checkin/subscription-id/kktest11-rg/kktest11-name';
                 fakeStats.restore();
                 sinon.assert.calledWithMatch(fakePost, expectedUrl, expectedCheckin);
+                assert.equal(resp, mock.CHECKIN_RESPONSE_OK);
+                done();
+            });
+        });
+
+        it('Verify checkin ok With Azure AppInsight Empty Stats', function(done) {
+            process.env.FUNCTIONS_EXTENSION_VERSION = '~4';
+            var master = new AlAzureMaster(mock.DEFAULT_FUNCTION_CONTEXT, 'ehub', '1.0.0');
+            master.checkin('2017-12-22T14:31:39', function(err, resp){
+                if (err) console.log(err);
+                const expectedCheckin = { 
+                    body: {
+                        version: '1.0.0',
+                        app_tenant_id: 'tenant-id',
+                        collection_stats: { 'log': { 'bytes': 10, 'events': 15 } },
+                        host_id: 'existing-host-id',
+                        source_id: 'existing-source-id',
+                        statistics: [{ 'Master': { 'errors': 0, 'invocations': 0 } }, { 'Collector': { 'errors': 0, 'invocations': 0 } }, { 'Updater': { 'errors': 0, 'invocations': 0 } }],
+                        dl_stats: { dl_count: 6, max_dl_size: 4257 },
+                        status: 'ok',
+                        details: []
+                    }
+                };
+                const expectedUrl = '/azure/ehub/checkin/subscription-id/kktest11-rg/kktest11-name';
+                fakeAppInsightStats.restore();
+                process.env.FUNCTIONS_EXTENSION_VERSION = '~3';
+                sinon.assert.calledWithMatch(fakePost, expectedUrl, expectedCheckin);
+                console.log(`imran *********************** ${JSON.stringify(resp)}`);
                 assert.equal(resp, mock.CHECKIN_RESPONSE_OK);
                 done();
             });
