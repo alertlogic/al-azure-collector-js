@@ -14,6 +14,7 @@ const fs = require('fs');
 var azureStorage = require('azure-storage');
 
 const AzureWebAppStats = require('../appstats').AzureWebAppStats;
+const AzureAppInsightStats = require('../appstats').AzureAppInsightStats;
 const AzureCollectionStats = require('../appstats').AzureCollectionStats;
 const CollectionStatRecord = require('../appstats').CollectionStatRecord;
 const mock = require('./mock');
@@ -246,6 +247,44 @@ describe('App Stats tests', function() {
             stats.getAppStats('2017-12-22T14:31:39', function(err, appStats) {
                 console.log(JSON.stringify(stats));
                 msTableServiceStub.restore();
+                assert.deepEqual(expectedStats, appStats);
+                done();
+            });
+        });
+    });
+
+    describe('AzureAppInsightStats test', function () {
+        beforeEach(function () {
+        });
+        afterEach(function (done) {
+            fs.unlink(mock.AL_TOKEN_CACHE_FILENAME, function (err) {
+                done();
+            });
+            nock.cleanAll();
+        });
+
+        it('checks getAppStats() with no Functions', function (done) {
+            var expectedStats = {
+                statistics: []
+            };
+            var stats = new AzureAppInsightStats();
+            stats.getAppStats('2022-12-22T14:31:39', function (err, appStats) {
+              
+                assert.deepEqual(expectedStats, appStats);
+                done();
+            });
+        });
+
+        it('checks getAppStats() with empty or zero stats', function (done) {
+            var expectedStats = {
+                statistics: [
+                    { Master: { invocations: 0, errors: 0 } },
+                    { Collector: { invocations: 0, errors: 0 } },
+                    { Updater: { invocations: 0, errors: 0 } }
+                ]
+            };
+            var stats = new AzureAppInsightStats(DEFAULT_APP_FUNCTIONS);
+            stats.getAppStats('2022-12-22T14:31:39', function (err, appStats) {
                 assert.deepEqual(expectedStats, appStats);
                 done();
             });

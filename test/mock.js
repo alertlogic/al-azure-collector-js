@@ -162,6 +162,20 @@ const INVOCATION_STATS = {
     ]
 };
 
+const EMPTY_INVOCATION_STATS = {
+  statistics: [
+      {'Master':
+          {'invocations':0,'errors':0}
+      },
+      {'Collector':
+          {'invocations':0,'errors':0}
+      },
+      {'Updater':
+          {'invocations':0,'errors':0}
+      }
+  ]
+};
+
 const CHECKIN_RESPONSE_OK = {
     id: 'checkin-source-id',
     host: {
@@ -533,6 +547,7 @@ module.exports = {
     AZCOLLECT_API_ENDPOINT: AZCOLLECT_API_ENDPOINT,
     DEFAULT_FUNCTION_CONTEXT: DEFAULT_FUNCTION_CONTEXT,
     INVOCATION_STATS: INVOCATION_STATS,
+    EMPTY_INVOCATION_STATS:EMPTY_INVOCATION_STATS,
     COLLECTOR_INVOCATION_LOGS: COLLECTOR_INVOCATION_LOGS,
     COLLECTOR_INVOCATION_LOGS_CONTD: COLLECTOR_INVOCATION_LOGS_CONTD,
     COLLECTOR_INVOCATION_FILTERJSON_LOGS: COLLECTOR_INVOCATION_FILTERJSON_LOGS,

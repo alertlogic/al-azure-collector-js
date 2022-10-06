@@ -18,6 +18,7 @@ const alcollector = require('@alertlogic/al-collector-js');
 
 const m_util = require('./util');
 const AzureWebAppStats = require('./appstats').AzureWebAppStats;
+const AzureAppInsightStats = require('./appstats').AzureAppInsightStats;
 const AzureCollectionStats = require('./appstats').AzureCollectionStats;
 const AlAzureDlBlob = require('./dlblob').AlAzureDlBlob;
 const AlAzureUpdater = require('./updater').AlAzureUpdater;
@@ -119,8 +120,11 @@ class AlAzureMaster {
         this._webAppName = webAppName ? webAppName : process.env.WEBSITE_SITE_NAME;
         this._appFilterJson = process.env.APP_FILTER_JSON ? process.env.APP_FILTER_JSON : '';
         this._appFilterRegex = process.env.APP_FILTER_REGEX ? process.env.APP_FILTER_REGEX : '';
-        
-        this._appStats = new AzureWebAppStats(collectorAzureFunNames);
+        if (process.env.FUNCTIONS_EXTENSION_VERSION > '~3') {
+            this._appStats = new AzureAppInsightStats(collectorAzureFunNames);
+        } else {
+            this._appStats = new AzureWebAppStats(collectorAzureFunNames);
+        }
         this._collectionStats = new AzureCollectionStats(azureContext, {outputQueueBinding: OutputStatsBinding});
         this._alAzureDlBlob = new AlAzureDlBlob(azureContext, null);
 
