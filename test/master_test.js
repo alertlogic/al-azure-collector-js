@@ -497,7 +497,6 @@ describe('Master tests', function() {
                 fakeAppInsightStats.restore();
                 process.env.FUNCTIONS_EXTENSION_VERSION = '~3';
                 sinon.assert.calledWithMatch(fakePost, expectedUrl, expectedCheckin);
-                console.log(`imran *********************** ${JSON.stringify(resp)}`);
                 assert.equal(resp, mock.CHECKIN_RESPONSE_OK);
                 done();
             });
