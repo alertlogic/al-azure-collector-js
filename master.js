@@ -35,6 +35,8 @@ const SERVICE_ENDPOINTS = [
     'ingest'
 ];
 
+const APPLICATION_INSIGHTS_ENDPOINTS = 'https://api.applicationinsights.io/';
+
 const DEFAULT_APP_FUNCTIONS = ['Master', 'Collector', 'Updater'];
 
 /**
@@ -120,25 +122,28 @@ class AlAzureMaster {
         this._webAppName = webAppName ? webAppName : process.env.WEBSITE_SITE_NAME;
         this._appFilterJson = process.env.APP_FILTER_JSON ? process.env.APP_FILTER_JSON : '';
         this._appFilterRegex = process.env.APP_FILTER_REGEX ? process.env.APP_FILTER_REGEX : '';
+        
+        //Initialize new SDK
+        this._azureCreds=this.getTokenCredentials();
         if (process.env.FUNCTIONS_EXTENSION_VERSION > '~3') {
-            this._appStats = new AzureAppInsightStats(collectorAzureFunNames);
+            this._appStats = new AzureAppInsightStats(collectorAzureFunNames,this.getTokenCredentials(APPLICATION_INSIGHTS_ENDPOINTS),this._subscriptionId, this._resourceGroup);
         } else {
             this._appStats = new AzureWebAppStats(collectorAzureFunNames);
         }
+
         this._collectionStats = new AzureCollectionStats(azureContext, {outputQueueBinding: OutputStatsBinding});
         this._alAzureDlBlob = new AlAzureDlBlob(azureContext, null);
 
         //Initialize new SDK
-        if (process.env.MSI_ENDPOINT && process.env.MSI_SECRET) {
-            const options = {
-                msiEndpoint: process.env.MSI_ENDPOINT,
-                msiSecret: process.env.MSI_SECRET,
-            };
-            this._azureCreds = new MSIAppServiceTokenCredentials(options);
-        } else {
-            this._azureCreds = new ApplicationTokenCredentials(this._clientId, this._domain, this._clientSecret);
-        }
-
+        // if (process.env.MSI_ENDPOINT && process.env.MSI_SECRET) {
+        //     const options = {
+        //         msiEndpoint: process.env.MSI_ENDPOINT,
+        //         msiSecret: process.env.MSI_SECRET,
+        //     };
+        //     this._azureCreds = new MSIAppServiceTokenCredentials(options);
+        // } else {
+        //     this._azureCreds = new ApplicationTokenCredentials(this._clientId, this._domain, this._clientSecret);
+        // }
         this._azureWebsiteClient = new WebSiteManagementClient(this._azureCreds, this._subscriptionId);
         this.azureWebsiteClientObject = {
             azureWebsiteClient: this._azureWebsiteClient,
@@ -146,6 +151,22 @@ class AlAzureMaster {
             resourceGroup: this._resourceGroup
         }
 
+    }
+
+    getTokenCredentials(resource){
+        let credentials={};
+           if (process.env.MSI_ENDPOINT && process.env.MSI_SECRET) {
+            const options = {
+                msiEndpoint: process.env.MSI_ENDPOINT,
+                msiSecret: process.env.MSI_SECRET
+
+            };
+            if(resource) options.resource =resource;
+            credentials = new MSIAppServiceTokenCredentials(options);
+        } else {
+            credentials = new ApplicationTokenCredentials(this._clientId, this._domain, this._clientSecret,resource?resource:undefined);
+        }
+        return credentials;
     }
 
     getApplicationTokenCredentials(){

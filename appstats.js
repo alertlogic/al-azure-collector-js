@@ -12,6 +12,10 @@ const async = require('async');
 const util = require('util');
 const moment = require('moment');
 const parse = require('parse-key-value');
+
+const { ApplicationInsightsDataClient } = require("@azure/applicationinsights-query");
+const { DefaultAzureCredential } = require("@azure/identity");
+const { ApplicationInsightsManagementClient } = require("@azure/arm-appinsights");
 const azureStorage = require('azure-storage');
 const TableQuery = azureStorage.TableQuery;
 const TableUtilities = azureStorage.TableUtilities;
@@ -26,7 +30,7 @@ const STAT_TYPES_LOG = 1;
 
 const DEFAULT_STATS_QUEUE_NAME = 'alertlogic-stats';
 class AzureAppStats {
-    constructor(functionNames = [], _tableService) {
+    constructor(functionNames = []) {
         this._functionNames = functionNames;
     }
     
@@ -219,9 +223,63 @@ class AzureWebAppStats extends AzureAppStats {
 }
 
 class AzureAppInsightStats extends AzureAppStats {
-    constructor(functionNames = []) {
+    constructor(functionNames = [],tokenCredentials,subscriptionId, resourceGroup) {
         super(functionNames);
+        this._functionNames= functionNames;
+        this.tokenCredentials = tokenCredentials;
+        this.subscriptionId = subscriptionId;
+        this.resourceGroup = resourceGroup;
     }
+
+    getFunctionStats(functionName, timestamp, callback) {
+        if (process.env.APPINSIGHTS_INSTRUMENTATIONKEY || process.env.APPLICATIONINSIGHTS_CONNECTION_STRING) {
+            const managementClient = new ApplicationInsightsManagementClient(new DefaultAzureCredential(), this.subscriptionId);
+            managementClient.components.listByResourceGroup(this.resourceGroup).then((result) => {
+                const query = {
+                    "query": `requests
+                            | where operation_Name =~ 'Master' or operation_Name =~ 'Updater' or operation_Name =~ 'DLBlob' or operation_Name =~ 'EHubGeneral'
+                            | order by timestamp desc
+                            | where success == "True" or success == "False"
+                            | summarize errors = countif(success == "True"),
+                                            invocations = countif(success == "True" or success == "False") by operation_Name
+                            | extend details = pack_all()
+                            | summarize Result = make_list(details)
+            `, timespan: 'PT15M'
+                };
+                const insightsClient = new ApplicationInsightsDataClient(this.tokenCredentials, { subscriptionId: this.subscriptionId });
+
+                insightsClient.query.execute(result[0].appId, query).then((result) => {
+                    const obj = JSON.parse(result.tables[0].rows[0]);
+                    const data = obj.map((item) => {
+                        return { [item.operation_Name]: { invocations: item.invocations, errors: item.errors } };
+                    });
+                    return callback(null, data);
+                }).catch((err) => {
+                    return callback(err, null);
+                });
+
+            }).catch((err) => {
+                console.log(`${err} An error occurred, while getting application insights appId`);
+                return callback(err, null);
+            });
+        }else{
+            super.getFunctionStats(functionName, timestamp, callback);
+        }
+    }
+    getAppStats(timestamp, callback) {
+        var appstats = this;
+        async.map(appstats._functionNames,
+            function (fname, callback) {
+                appstats.getFunctionStats(fname, timestamp, callback);
+            },
+            function (mapErr, mapsResult) {
+                if (mapErr) {
+                    return callback(mapErr);
+                } else {
+                    return callback(null, { statistics: mapsResult });
+                }
+            });
+    };
 }
 
 class CollectionStatRecord {

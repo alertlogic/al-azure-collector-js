@@ -20,6 +20,9 @@ const CollectionStatRecord = require('../appstats').CollectionStatRecord;
 const mock = require('./mock');
 
 const DEFAULT_APP_FUNCTIONS = ['Master', 'Collector', 'Updater'];
+process.env.APP_SUBSCRIPTION_ID = 'subscription-id';
+process.env.APP_RESOURCE_GROUP = 'kktest11';
+const mockCredentials={signRequest:()=>{}};
 
 describe('App Stats tests', function() {
     var clock;
@@ -267,7 +270,7 @@ describe('App Stats tests', function() {
             var expectedStats = {
                 statistics: []
             };
-            var stats = new AzureAppInsightStats();
+            var stats = new AzureAppInsightStats([],mockCredentials,process.env.APP_SUBSCRIPTION_ID,process.env.APP_RESOURCE_GROUP);
             stats.getAppStats('2022-12-22T14:31:39', function (err, appStats) {
               
                 assert.deepEqual(expectedStats, appStats);
@@ -276,6 +279,7 @@ describe('App Stats tests', function() {
         });
 
         it('checks getAppStats() with empty or zero stats', function (done) {
+
             var expectedStats = {
                 statistics: [
                     { Master: { invocations: 0, errors: 0 } },
@@ -283,12 +287,36 @@ describe('App Stats tests', function() {
                     { Updater: { invocations: 0, errors: 0 } }
                 ]
             };
-            var stats = new AzureAppInsightStats(DEFAULT_APP_FUNCTIONS);
+            var stats = new AzureAppInsightStats(DEFAULT_APP_FUNCTIONS, mockCredentials, process.env.APP_SUBSCRIPTION_ID, process.env.APP_RESOURCE_GROUP);
             stats.getAppStats('2022-12-22T14:31:39', function (err, appStats) {
                 assert.deepEqual(expectedStats, appStats);
                 done();
             });
         });
+
+        // it('checks getAppStats() with stats', function (done) {
+        //     process.env.APPINSIGHTS_INSTRUMENTATIONKEY = 'insights-instrumentation-key';
+        //     var msInsightsDataStub = sinon.stub(AzureAppInsightStats.prototype, 'getAppStats').callsFake(
+        //         function fakeFn(account, key, host) {
+        //             var mockObj = expectedStats;
+        //             return mockObj;
+        //         }
+        //     );
+
+        //     var expectedStats = {
+        //         statistics: [
+        //             { Master: { invocations: 0, errors: 0 } },
+        //             { Collector: { invocations: 0, errors: 0 } },
+        //             { Updater: { invocations: 0, errors: 0 } }
+        //         ]
+        //     };
+        //     var stats = new AzureAppInsightStats(DEFAULT_APP_FUNCTIONS, mockCredentials, process.env.APP_SUBSCRIPTION_ID, process.env.APP_RESOURCE_GROUP);
+        //     stats.getAppStats('2022-12-22T14:31:39', function (err, appStats) {
+        //         assert.deepEqual(expectedStats, appStats);
+        //         msInsightsDataStub.restore();
+        //         done();
+        //     });
+        // });
     });
     
     describe('AzureCollectionStats test', function() {
