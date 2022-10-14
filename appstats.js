@@ -231,7 +231,7 @@ class AzureAppInsightStats extends AzureAppStats {
         this.resourceGroup = resourceGroup;
     }
 
-    getFunctionStats(functionName, timestamp, callback) {
+    getFunctionStats(timestamp, callback) {
         if (process.env.APPINSIGHTS_INSTRUMENTATIONKEY || process.env.APPLICATIONINSIGHTS_CONNECTION_STRING) {
             const managementClient = new ApplicationInsightsManagementClient(new DefaultAzureCredential(), this.subscriptionId);
             managementClient.components.listByResourceGroup(this.resourceGroup).then((result) => {
@@ -250,9 +250,11 @@ class AzureAppInsightStats extends AzureAppStats {
 
                 insightsClient.query.execute(result[0].appId, query).then((result) => {
                     const obj = JSON.parse(result.tables[0].rows[0]);
+                    console.log(`imran *** ${JSON.stringify(obj)}`)
                     const data = obj.map((item) => {
                         return { [item.operation_Name]: { invocations: item.invocations, errors: item.errors } };
                     });
+
                     return callback(null, data);
                 }).catch((err) => {
                     return callback(err, null);
@@ -262,13 +264,20 @@ class AzureAppInsightStats extends AzureAppStats {
                 console.log(`${err} An error occurred, while getting application insights appId`);
                 return callback(err, null);
             });
-        }else{
-            super.getFunctionStats(functionName, timestamp, callback);
         }
     }
     getAppStats(timestamp, callback) {
         var appstats = this;
-        async.map(appstats._functionNames,
+        if (process.env.APPINSIGHTS_INSTRUMENTATIONKEY || process.env.APPLICATIONINSIGHTS_CONNECTION_STRING) {
+                 appstats.getFunctionStats(timestamp,  function (mapErr, mapsResult) {
+                if (mapErr) {
+                    return callback(mapErr);
+                } else {
+                    return callback(null, { statistics: mapsResult });
+                }
+            });
+        }else{
+             async.map(appstats._functionNames,
             function (fname, callback) {
                 appstats.getFunctionStats(fname, timestamp, callback);
             },
@@ -278,8 +287,11 @@ class AzureAppInsightStats extends AzureAppStats {
                 } else {
                     return callback(null, { statistics: mapsResult });
                 }
-            });
+            });  
+        }
+     
     };
+    
 }
 
 class CollectionStatRecord {
