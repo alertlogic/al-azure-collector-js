@@ -133,17 +133,6 @@ class AlAzureMaster {
 
         this._collectionStats = new AzureCollectionStats(azureContext, {outputQueueBinding: OutputStatsBinding});
         this._alAzureDlBlob = new AlAzureDlBlob(azureContext, null);
-
-        //Initialize new SDK
-        // if (process.env.MSI_ENDPOINT && process.env.MSI_SECRET) {
-        //     const options = {
-        //         msiEndpoint: process.env.MSI_ENDPOINT,
-        //         msiSecret: process.env.MSI_SECRET,
-        //     };
-        //     this._azureCreds = new MSIAppServiceTokenCredentials(options);
-        // } else {
-        //     this._azureCreds = new ApplicationTokenCredentials(this._clientId, this._domain, this._clientSecret);
-        // }
         this._azureWebsiteClient = new WebSiteManagementClient(this._azureCreds, this._subscriptionId);
         this.azureWebsiteClientObject = {
             azureWebsiteClient: this._azureWebsiteClient,
