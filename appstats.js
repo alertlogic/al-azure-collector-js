@@ -231,13 +231,13 @@ class AzureAppInsightStats extends AzureAppStats {
         this.resourceGroup = resourceGroup;
     }
 
-    getFunctionStats(timestamp, callback) {
+    getFunctionStats(functionName,timestamp, callback) {
         if (process.env.APPINSIGHTS_INSTRUMENTATIONKEY || process.env.APPLICATIONINSIGHTS_CONNECTION_STRING) {
             const managementClient = new ApplicationInsightsManagementClient(new DefaultAzureCredential(), this.subscriptionId);
             managementClient.components.listByResourceGroup(this.resourceGroup).then((result) => {
                 const query = {
                     "query": `requests
-                            | where operation_Name =~ 'Master' or operation_Name =~ 'Updater' or operation_Name =~ 'DLBlob' or operation_Name =~ 'EHubGeneral'
+                            | where operation_Name =~ '${functionName}'
                             | order by timestamp desc
                             | where success == "True" or success == "False"
                             | summarize errors = countif(success == "True"),
@@ -249,13 +249,18 @@ class AzureAppInsightStats extends AzureAppStats {
                 const insightsClient = new ApplicationInsightsDataClient(this.tokenCredentials, { subscriptionId: this.subscriptionId });
 
                 insightsClient.query.execute(result[0].appId, query).then((result) => {
-                    const obj = JSON.parse(result.tables[0].rows[0]);
-                    console.log(`imran *** ${JSON.stringify(obj)}`)
-                    const data = obj.map((item) => {
-                        return { [item.operation_Name]: { invocations: item.invocations, errors: item.errors } };
-                    });
-
-                    return callback(null, data);
+                    try {
+                        const data = JSON.parse(result.tables[0].rows[0]);
+                        if (data.length) {
+                            const dataObj = { [data[0].operation_Name]: { invocations: data[0].invocations, errors: data[0].errors } };
+                            return callback(null, dataObj);
+                        } else {
+                            const dataObj = { [functionName]: { invocations: 0, errors: 0 } };
+                            return callback(null, dataObj);
+                        }
+                    } catch (err) {
+                        return callback(err, null);
+                    }
                 }).catch((err) => {
                     return callback(err, null);
                 });
@@ -264,20 +269,13 @@ class AzureAppInsightStats extends AzureAppStats {
                 console.log(`${err} An error occurred, while getting application insights appId`);
                 return callback(err, null);
             });
+        }else{
+            super.getFunctionStats(functionName, timestamp, callback);
         }
     }
     getAppStats(timestamp, callback) {
         var appstats = this;
-        if (process.env.APPINSIGHTS_INSTRUMENTATIONKEY || process.env.APPLICATIONINSIGHTS_CONNECTION_STRING) {
-                 appstats.getFunctionStats(timestamp,  function (mapErr, mapsResult) {
-                if (mapErr) {
-                    return callback(mapErr);
-                } else {
-                    return callback(null, { statistics: mapsResult });
-                }
-            });
-        }else{
-             async.map(appstats._functionNames,
+        async.map(appstats._functionNames,
             function (fname, callback) {
                 appstats.getFunctionStats(fname, timestamp, callback);
             },
@@ -288,8 +286,6 @@ class AzureAppInsightStats extends AzureAppStats {
                     return callback(null, { statistics: mapsResult });
                 }
             });  
-        }
-     
     };
     
 }
