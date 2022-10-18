@@ -292,8 +292,7 @@ describe('App Stats tests', function() {
             });
         });
 
-        it('checks getAppStats() with stats', function (done) {
-            process.env.APPINSIGHTS_INSTRUMENTATIONKEY = 'key1';
+        it('checks getAppStats() and gets stats from application insights', function (done) {
             var getInvocationQueryStub = sinon.stub(AzureAppInsightStats.prototype, 'getFunctionStats').callsFake(
                 function fakeFn(functionName, timestamp, callback) {
                     if (functionName === 'Master')
