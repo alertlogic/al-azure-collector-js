@@ -248,7 +248,6 @@ describe('App Stats tests', function() {
             
             var stats = new AzureWebAppStats(DEFAULT_APP_FUNCTIONS);
             stats.getAppStats('2017-12-22T14:31:39', function(err, appStats) {
-                console.log(JSON.stringify(stats));
                 msTableServiceStub.restore();
                 assert.deepEqual(expectedStats, appStats);
                 done();
@@ -279,7 +278,6 @@ describe('App Stats tests', function() {
         });
 
         it('checks getAppStats() with empty or zero stats', function (done) {
-
             var expectedStats = {
                 statistics: [
                     { Master: { invocations: 0, errors: 0 } },
@@ -289,6 +287,35 @@ describe('App Stats tests', function() {
             };
             var stats = new AzureAppInsightStats(DEFAULT_APP_FUNCTIONS, mockCredentials, process.env.APP_SUBSCRIPTION_ID, process.env.APP_RESOURCE_GROUP);
             stats.getAppStats('2022-12-22T14:31:39', function (err, appStats) {
+                assert.deepEqual(expectedStats, appStats);
+                done();
+            });
+        });
+
+        it('checks getAppStats() with stats', function (done) {
+            process.env.APPINSIGHTS_INSTRUMENTATIONKEY = 'key1';
+            var getInvocationQueryStub = sinon.stub(AzureAppInsightStats.prototype, 'getFunctionStats').callsFake(
+                function fakeFn(functionName, timestamp, callback) {
+                    if (functionName === 'Master')
+                        return callback(null, mock.APPINSIGHTS_MASTER_INVOCATION_LOGS);
+                    if (functionName === 'Collector')
+                        return callback(null, mock.APPINSIGHTS_COLLECTOR_INVOCATION_LOGS);
+                    if (functionName === 'Updater') {
+                        return callback(null, mock.APPINSIGHTS_UPDATER_INVOCATION_LOGS);
+                    }
+                    return callback(null, []);
+                }
+            );
+            var expectedStats = {
+                statistics: [
+                    { Master: { invocations: 5, errors: 3 } },
+                    { Collector: { invocations: 50, errors: 5 } },
+                    { Updater: { invocations: 15, errors: 10 } }
+                ]
+            };
+            var stats = new AzureAppInsightStats(DEFAULT_APP_FUNCTIONS, mockCredentials, process.env.APP_SUBSCRIPTION_ID, process.env.APP_RESOURCE_GROUP);
+            stats.getAppStats('2022-12-22T14:31:39', function (err, appStats) {
+                getInvocationQueryStub.restore();
                 assert.deepEqual(expectedStats, appStats);
                 done();
             });
