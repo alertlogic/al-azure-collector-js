@@ -221,6 +221,18 @@ function getAuthResp() {
     };
 }
 
+function setKustoQuery(functionName) {
+  return {
+    "query": `requests
+            | where operation_Name =~ '${functionName}'
+            | order by timestamp desc
+            | where success == "True" or success == "False"
+            | summarize errors = countif(success == "True"),invocations = countif(success == "True" or success == "False") by operation_Name
+            | extend details = pack_all()
+            | summarize Result = make_list(details)`, timespan: 'PT15M'
+  };
+}
+
 var COLLECTOR_INVOCATION_LOGS = {
     entries : [
       { PartitionKey: { '$': 'Edm.String', _: 'I' },
@@ -405,6 +417,63 @@ var APPINSIGHTS_UPDATER_INVOCATION_LOGS = {
   }
 };
 
+var UNPARSED_APPINSIGHTS_UPDATER_INVOCATION_LOGS = {
+  "tables": [
+      {
+          "name": "PrimaryResult",
+          "columns": [
+              {
+                  "name": "Result",
+                  "type": "dynamic"
+              }
+          ],
+          "rows": [
+              [
+                  "[{\"operation_Name\":\"Updater\",\"errors\":10,\"invocations\":15}]"
+              ]
+          ]
+      }
+  ]
+};
+
+var UNPARSED_APPINSIGHTS_COLLECTOR_INVOCATION_LOGS = {
+  "tables": [
+      {
+          "name": "PrimaryResult",
+          "columns": [
+              {
+                  "name": "Result",
+                  "type": "dynamic"
+              }
+          ],
+          "rows": [
+              [
+                  "[{\"operation_Name\":\"Collector\",\"errors\":5,\"invocations\":50}]"
+              ]
+          ]
+      }
+  ]
+};
+
+var UNPARSED_APPINSIGHTS_MASTER_INVOCATION_LOGS = {
+  "tables": [
+      {
+          "name": "PrimaryResult",
+          "columns": [
+              {
+                  "name": "Result",
+                  "type": "dynamic"
+              }
+          ],
+          "rows": [
+              [
+                  "[{\"operation_Name\":\"Master\",\"errors\":3,\"invocations\":5}]"
+              ]
+          ]
+      }
+  ]
+};
+
 var UPDATER_INVOCATION_LOGS_CONTD = {
         continuationToken: 'cont-token',
         entries : [      
@@ -578,6 +647,9 @@ module.exports = {
     APPINSIGHTS_MASTER_INVOCATION_LOGS:APPINSIGHTS_MASTER_INVOCATION_LOGS,
     APPINSIGHTS_COLLECTOR_INVOCATION_LOGS:APPINSIGHTS_COLLECTOR_INVOCATION_LOGS,
     APPINSIGHTS_UPDATER_INVOCATION_LOGS:APPINSIGHTS_UPDATER_INVOCATION_LOGS,
+    UNPARSED_APPINSIGHTS_COLLECTOR_INVOCATION_LOGS:UNPARSED_APPINSIGHTS_COLLECTOR_INVOCATION_LOGS,
+    UNPARSED_APPINSIGHTS_MASTER_INVOCATION_LOGS:UNPARSED_APPINSIGHTS_MASTER_INVOCATION_LOGS,
+    UNPARSED_APPINSIGHTS_UPDATER_INVOCATION_LOGS:UNPARSED_APPINSIGHTS_UPDATER_INVOCATION_LOGS,
     CHECKIN_RESPONSE_OK: CHECKIN_RESPONSE_OK,
     getAzureWebApp: getAzureWebApp,
     getAuthResp: getAuthResp,
@@ -588,6 +660,7 @@ module.exports = {
     statsQueue403Headers: statsQueue403Headers,
     statsQueue404: statsQueue404,
     statsQueue404Headers: statsQueue404Headers,
+    setKustoQuery:setKustoQuery,
     LIST_CONTAINER_BLOBS: LIST_CONTAINER_BLOBS,
     LIST_CONTAINER_BLOBS_EMPTY: LIST_CONTAINER_BLOBS_EMPTY,
     GET_BLOB_CONTENT_TEXT: GET_BLOB_CONTENT_TEXT,

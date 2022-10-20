@@ -223,15 +223,15 @@ class AzureWebAppStats extends AzureAppStats {
 }
 
 class AzureAppInsightStats extends AzureAppStats {
-    constructor(functionNames = [],tokenCredentials,subscriptionId, resourceGroup) {
+    constructor(functionNames = [], tokenCredentials, subscriptionId, resourceGroup) {
         super(functionNames);
-        this._functionNames= functionNames;
+        this._functionNames = functionNames;
         this.tokenCredentials = tokenCredentials;
         this.subscriptionId = subscriptionId;
         this.resourceGroup = resourceGroup;
     }
 
-    getFunctionStats(functionName,timestamp, callback) {
+    getFunctionStats(functionName, timestamp, callback) {
         if (process.env.APPINSIGHTS_INSTRUMENTATIONKEY || process.env.APPLICATIONINSIGHTS_CONNECTION_STRING) {
             const managementClient = new ApplicationInsightsManagementClient(new DefaultAzureCredential(), this.subscriptionId);
             managementClient.components.listByResourceGroup(this.resourceGroup).then((result) => {
@@ -240,11 +240,9 @@ class AzureAppInsightStats extends AzureAppStats {
                             | where operation_Name =~ '${functionName}'
                             | order by timestamp desc
                             | where success == "True" or success == "False"
-                            | summarize errors = countif(success == "True"),
-                                            invocations = countif(success == "True" or success == "False") by operation_Name
+                            | summarize errors = countif(success == "True"),invocations = countif(success == "True" or success == "False") by operation_Name
                             | extend details = pack_all()
-                            | summarize Result = make_list(details)
-            `, timespan: 'PT15M'
+                            | summarize Result = make_list(details)`, timespan: 'PT15M'
                 };
                 const insightsClient = new ApplicationInsightsDataClient(this.tokenCredentials, { subscriptionId: this.subscriptionId });
 
@@ -259,20 +257,22 @@ class AzureAppInsightStats extends AzureAppStats {
                             return callback(null, dataObj);
                         }
                     } catch (err) {
-                        return callback(err, null);
+                        let errMessage = `An error occurred, while getting statistics ${err}`;
+                        return callback(errMessage, null);
                     }
                 }).catch((err) => {
-                    return callback(err, null);
+                    let errMessage = `An error occurred, while executing application insights query ${err}`;
+                    return callback(errMessage, null);
                 });
-
             }).catch((err) => {
-                const errMessage = `${err} An error occurred, while getting application insights appId`;
+                let errMessage = `An error occurred, while getting application insights appId ${err}`;
                 return callback(errMessage, null);
             });
-        }else{
+        } else {
             super.getFunctionStats(functionName, timestamp, callback);
         }
     }
+
     getAppStats(timestamp, callback) {
         var appstats = this;
         async.map(appstats._functionNames,
@@ -285,9 +285,9 @@ class AzureAppInsightStats extends AzureAppStats {
                 } else {
                     return callback(null, { statistics: mapsResult });
                 }
-            });  
+            });
     };
-    
+
 }
 
 class CollectionStatRecord {

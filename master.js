@@ -126,7 +126,8 @@ class AlAzureMaster {
         //Initialize new SDK
         this._azureCreds=this.getTokenCredentials();
         if (process.env.FUNCTIONS_EXTENSION_VERSION > '~3') {
-            this._appStats = new AzureAppInsightStats(collectorAzureFunNames,this.getTokenCredentials(APPLICATION_INSIGHTS_ENDPOINTS),this._subscriptionId, this._resourceGroup);
+            const tokenCredentials = this.getTokenCredentials(APPLICATION_INSIGHTS_ENDPOINTS);
+            this._appStats = new AzureAppInsightStats(collectorAzureFunNames, tokenCredentials, this._subscriptionId, this._resourceGroup);
         } else {
             this._appStats = new AzureWebAppStats(collectorAzureFunNames);
         }
@@ -142,18 +143,18 @@ class AlAzureMaster {
 
     }
 
-    getTokenCredentials(resource){
-        let credentials={};
-           if (process.env.MSI_ENDPOINT && process.env.MSI_SECRET) {
+    getTokenCredentials(resource) {
+        let credentials = {};
+        if (process.env.MSI_ENDPOINT && process.env.MSI_SECRET) {
             const options = {
                 msiEndpoint: process.env.MSI_ENDPOINT,
                 msiSecret: process.env.MSI_SECRET
 
             };
-            if(resource) options.resource =resource;
+            if (resource) options.resource = resource;
             credentials = new MSIAppServiceTokenCredentials(options);
         } else {
-            credentials = new ApplicationTokenCredentials(this._clientId, this._domain, this._clientSecret,resource?resource:undefined);
+            credentials = new ApplicationTokenCredentials(this._clientId, this._domain, this._clientSecret, resource ? resource : undefined);
         }
         return credentials;
     }
