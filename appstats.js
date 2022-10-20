@@ -240,7 +240,7 @@ class AzureAppInsightStats extends AzureAppStats {
                             | where operation_Name =~ '${functionName}'
                             | order by timestamp desc
                             | where success == "True" or success == "False"
-                            | summarize errors = countif(success == "True"),invocations = countif(success == "True" or success == "False") by operation_Name
+                            | summarize errors = countif(success == "False"),invocations = countif(success == "True" or success == "False") by operation_Name
                             | extend details = pack_all()
                             | summarize Result = make_list(details)`, timespan: 'PT15M'
                 };
