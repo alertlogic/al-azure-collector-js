@@ -12,6 +12,10 @@ const async = require('async');
 const util = require('util');
 const moment = require('moment');
 const parse = require('parse-key-value');
+
+const { ApplicationInsightsDataClient } = require("@azure/applicationinsights-query");
+const { DefaultAzureCredential } = require("@azure/identity");
+const { ApplicationInsightsManagementClient } = require("@azure/arm-appinsights");
 const azureStorage = require('azure-storage');
 const TableQuery = azureStorage.TableQuery;
 const TableUtilities = azureStorage.TableUtilities;
@@ -26,7 +30,7 @@ const STAT_TYPES_LOG = 1;
 
 const DEFAULT_STATS_QUEUE_NAME = 'alertlogic-stats';
 class AzureAppStats {
-    constructor(functionNames = [], _tableService) {
+    constructor(functionNames = []) {
         this._functionNames = functionNames;
     }
     
@@ -219,9 +223,71 @@ class AzureWebAppStats extends AzureAppStats {
 }
 
 class AzureAppInsightStats extends AzureAppStats {
-    constructor(functionNames = []) {
+    constructor(functionNames = [], tokenCredentials, subscriptionId, resourceGroup) {
         super(functionNames);
+        this._functionNames = functionNames;
+        this.tokenCredentials = tokenCredentials;
+        this.subscriptionId = subscriptionId;
+        this.resourceGroup = resourceGroup;
     }
+
+    getFunctionStats(functionName, timestamp, callback) {
+        if (process.env.APPINSIGHTS_INSTRUMENTATIONKEY || process.env.APPLICATIONINSIGHTS_CONNECTION_STRING) {
+            const managementClient = new ApplicationInsightsManagementClient(new DefaultAzureCredential(), this.subscriptionId);
+            managementClient.components.listByResourceGroup(this.resourceGroup).then((result) => {
+                const query = {
+                    "query": `requests
+                            | where operation_Name =~ '${functionName}'
+                            | order by timestamp desc
+                            | where success == "True" or success == "False"
+                            | summarize errors = countif(success == "True"),invocations = countif(success == "True" or success == "False") by operation_Name
+                            | extend details = pack_all()
+                            | summarize Result = make_list(details)`, timespan: 'PT15M'
+                };
+                const insightsClient = new ApplicationInsightsDataClient(this.tokenCredentials, { subscriptionId: this.subscriptionId });
+
+                insightsClient.query.execute(result[0].appId, query).then((result) => {
+                    try {
+                        const data = JSON.parse(result.tables[0].rows[0]);
+                        if (data.length) {
+                            const dataObj = { [data[0].operation_Name]: { invocations: data[0].invocations, errors: data[0].errors } };
+                            return callback(null, dataObj);
+                        } else {
+                            const dataObj = { [functionName]: { invocations: 0, errors: 0 } };
+                            return callback(null, dataObj);
+                        }
+                    } catch (err) {
+                        let errMessage = `An error occurred, while getting statistics ${err}`;
+                        return callback(errMessage, null);
+                    }
+                }).catch((err) => {
+                    let errMessage = `An error occurred, while executing application insights query ${err}`;
+                    return callback(errMessage, null);
+                });
+            }).catch((err) => {
+                let errMessage = `An error occurred, while getting application insights appId ${err}`;
+                return callback(errMessage, null);
+            });
+        } else {
+            super.getFunctionStats(functionName, timestamp, callback);
+        }
+    }
+
+    getAppStats(timestamp, callback) {
+        var appstats = this;
+        async.map(appstats._functionNames,
+            function (fname, callback) {
+                appstats.getFunctionStats(fname, timestamp, callback);
+            },
+            function (mapErr, mapsResult) {
+                if (mapErr) {
+                    return callback(mapErr);
+                } else {
+                    return callback(null, { statistics: mapsResult });
+                }
+            });
+    };
+
 }
 
 class CollectionStatRecord {

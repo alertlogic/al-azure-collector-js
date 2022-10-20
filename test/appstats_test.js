@@ -17,9 +17,14 @@ const AzureWebAppStats = require('../appstats').AzureWebAppStats;
 const AzureAppInsightStats = require('../appstats').AzureAppInsightStats;
 const AzureCollectionStats = require('../appstats').AzureCollectionStats;
 const CollectionStatRecord = require('../appstats').CollectionStatRecord;
+const { ApplicationInsightsDataClient } = require("@azure/applicationinsights-query");
+
 const mock = require('./mock');
 
 const DEFAULT_APP_FUNCTIONS = ['Master', 'Collector', 'Updater'];
+process.env.APP_SUBSCRIPTION_ID = 'subscription-id';
+process.env.APP_RESOURCE_GROUP = 'kktest11';
+const mockCredentials={signRequest:()=>{}};
 
 describe('App Stats tests', function() {
     var clock;
@@ -245,7 +250,6 @@ describe('App Stats tests', function() {
             
             var stats = new AzureWebAppStats(DEFAULT_APP_FUNCTIONS);
             stats.getAppStats('2017-12-22T14:31:39', function(err, appStats) {
-                console.log(JSON.stringify(stats));
                 msTableServiceStub.restore();
                 assert.deepEqual(expectedStats, appStats);
                 done();
@@ -267,7 +271,7 @@ describe('App Stats tests', function() {
             var expectedStats = {
                 statistics: []
             };
-            var stats = new AzureAppInsightStats();
+            var stats = new AzureAppInsightStats([],mockCredentials,process.env.APP_SUBSCRIPTION_ID,process.env.APP_RESOURCE_GROUP);
             stats.getAppStats('2022-12-22T14:31:39', function (err, appStats) {
               
                 assert.deepEqual(expectedStats, appStats);
@@ -283,9 +287,112 @@ describe('App Stats tests', function() {
                     { Updater: { invocations: 0, errors: 0 } }
                 ]
             };
-            var stats = new AzureAppInsightStats(DEFAULT_APP_FUNCTIONS);
+            var stats = new AzureAppInsightStats(DEFAULT_APP_FUNCTIONS, mockCredentials, process.env.APP_SUBSCRIPTION_ID, process.env.APP_RESOURCE_GROUP);
             stats.getAppStats('2022-12-22T14:31:39', function (err, appStats) {
                 assert.deepEqual(expectedStats, appStats);
+                done();
+            });
+        });
+
+        it('checks getAppStats() and gets stats from application insights', function (done) {
+            var getInvocationQueryStub = sinon.stub(AzureAppInsightStats.prototype, 'getFunctionStats').callsFake(
+                function fakeFn(functionName, timestamp, callback) {
+                    if (functionName === 'Master')
+                        return callback(null, mock.APPINSIGHTS_MASTER_INVOCATION_LOGS);
+                    if (functionName === 'Collector')
+                        return callback(null, mock.APPINSIGHTS_COLLECTOR_INVOCATION_LOGS);
+                    if (functionName === 'Updater') {
+                        return callback(null, mock.APPINSIGHTS_UPDATER_INVOCATION_LOGS);
+                    }
+                    return callback(null, []);
+                }
+            );
+            var expectedStats = {
+                statistics: [
+                    { Master: { invocations: 5, errors: 3 } },
+                    { Collector: { invocations: 50, errors: 5 } },
+                    { Updater: { invocations: 15, errors: 10 } }
+                ]
+            };
+            var stats = new AzureAppInsightStats(DEFAULT_APP_FUNCTIONS, mockCredentials, process.env.APP_SUBSCRIPTION_ID, process.env.APP_RESOURCE_GROUP);
+            stats.getAppStats('2022-12-22T14:31:39', function (err, appStats) {
+                getInvocationQueryStub.restore();
+                assert.deepEqual(expectedStats, appStats);
+                done();
+            });
+        });
+
+        it('checks getAppStats() return values from Insights API to test Master stats parsing', function (done) {
+            var query = mock.setKustoQuery('Master');
+            var insightsClient = new ApplicationInsightsDataClient(mockCredentials, { subscriptionId: process.env.APP_SUBSCRIPTION_ID });
+            var appId = 'c5b420d7-23f3-4664-802d-c00c4c5611eb';
+            var mockInsightsClient = sinon.stub(insightsClient.query, 'execute');
+            mockInsightsClient.withArgs(appId, query).resolves(mock.UNPARSED_APPINSIGHTS_MASTER_INVOCATION_LOGS);
+
+            insightsClient.query.execute(appId, query).then(function (result) {
+                let dataObj = { 'Master': { invocations: 0, errors: 0 } };
+                try {
+                    const data = JSON.parse(result.tables[0].rows[0]);
+                    if (data.length) {
+                        dataObj = { [data[0].operation_Name]: { invocations: data[0].invocations, errors: data[0].errors } };
+                    }
+                    mockInsightsClient.restore();
+                    assert.deepEqual(mock.APPINSIGHTS_MASTER_INVOCATION_LOGS, dataObj);
+                    done();
+                } catch (e) {
+                }
+            }).catch((error) => {
+                mockInsightsClient.restore();
+                done();
+            });
+        });
+
+        it('checks getAppStats() return values from Insights API to test Updater stats parsing', function (done) {
+            var query = mock.setKustoQuery('Updater');
+            var insightsClient = new ApplicationInsightsDataClient(mockCredentials, { subscriptionId: process.env.APP_SUBSCRIPTION_ID });
+            var appId = 'c5b420d7-23f3-4664-802d-c00c4c5611eb';
+            var mockInsightsClient = sinon.stub(insightsClient.query, 'execute');
+            mockInsightsClient.withArgs(appId, query).resolves(mock.UNPARSED_APPINSIGHTS_UPDATER_INVOCATION_LOGS);
+
+            insightsClient.query.execute(appId, query).then(function (result) {
+                let dataObj = { 'Updater': { invocations: 0, errors: 0 } };
+                try {
+                    const data = JSON.parse(result.tables[0].rows[0]);
+                    if (data.length) {
+                        dataObj = { [data[0].operation_Name]: { invocations: data[0].invocations, errors: data[0].errors } };
+                    }
+                    mockInsightsClient.restore();
+                    assert.deepEqual(mock.APPINSIGHTS_UPDATER_INVOCATION_LOGS, dataObj);
+                    done();
+                } catch (e) {
+                }
+            }).catch((error) => {
+                mockInsightsClient.restore();
+                done();
+            });
+        });
+
+        it('checks getAppStats() return values from Insights API to test Collector stats parsing', function (done) {
+            var query = mock.setKustoQuery('Collector');
+            var insightsClient = new ApplicationInsightsDataClient(mockCredentials, { subscriptionId: process.env.APP_SUBSCRIPTION_ID });
+            var appId = 'c5b420d7-23f3-4664-802d-c00c4c5611eb';
+            var mockInsightsClient = sinon.stub(insightsClient.query, 'execute');
+            mockInsightsClient.withArgs(appId, query).resolves(mock.UNPARSED_APPINSIGHTS_COLLECTOR_INVOCATION_LOGS);
+
+            insightsClient.query.execute(appId, query).then(function (result) {
+                let dataObj = { 'Collector': { invocations: 0, errors: 0 } };
+                try {
+                    const data = JSON.parse(result.tables[0].rows[0]);
+                    if (data.length) {
+                        dataObj = { [data[0].operation_Name]: { invocations: data[0].invocations, errors: data[0].errors } };
+                    }
+                    mockInsightsClient.restore();
+                    assert.deepEqual(mock.APPINSIGHTS_COLLECTOR_INVOCATION_LOGS, dataObj);
+                    done();
+                } catch (e) {
+                }
+            }).catch((error) => {
+                mockInsightsClient.restore();
                 done();
             });
         });
