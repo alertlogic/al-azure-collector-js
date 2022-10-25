@@ -344,7 +344,6 @@ describe('App Stats tests', function() {
                     { Updater: { invocations: 15, errors: 10 } }
                 ]
             };
-            process.env.APPINSIGHTS_INSTRUMENTATIONKEY = 'tests';
             var stats = new AzureAppInsightStats(DEFAULT_APP_FUNCTIONS, mockCredentials, process.env.APP_SUBSCRIPTION_ID, process.env.APP_RESOURCE_GROUP);
             stats.getAppStats('2022-12-22T14:31:39', function (err, appStats) {
                 getInvocationQueryStub.restore();
