@@ -237,12 +237,13 @@ class AzureAppInsightStats extends AzureAppStats {
             managementClient.components.listByResourceGroup(this.resourceGroup).then((result) => {
                 const query = {
                     "query": `requests
-                            | where operation_Name =~ '${functionName}'
-                            | order by timestamp desc
-                            | where success == "True" or success == "False"
-                            | summarize errors = countif(success == "False"),invocations = countif(success == "True" or success == "False") by operation_Name
-                            | extend details = pack_all()
-                            | summarize Result = make_list(details)`, timespan: 'PT15M'
+                    | where operation_Name =~ "${functionName}"
+                    | where timestamp >= ago(15m)
+                    | order by timestamp desc
+                    | where success == "True" or success == "False"
+                    | summarize errors = countif(success == "False"),invocations = countif(success == "True" or success == "False") by operation_Name
+                    | extend details = pack_all()
+                    | summarize Result = make_list(details)`
                 };
                 const insightsClient = new ApplicationInsightsDataClient(this.tokenCredentials, { subscriptionId: this.subscriptionId });
 
