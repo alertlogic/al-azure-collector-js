@@ -236,6 +236,7 @@ class AzureAppInsightStats extends AzureAppStats {
     }
     
     getAppInsightsFunctionStats(functionNames, timestamp, callback) {
+        var appstats = this;
         const managementClient = new ApplicationInsightsManagementClient(new DefaultAzureCredential(), this.subscriptionId);
         managementClient.components.listByResourceGroup(this.resourceGroup).then((result) => {
             const insightsClient = new ApplicationInsightsDataClient(this.tokenCredentials, { subscriptionId: this.subscriptionId });
