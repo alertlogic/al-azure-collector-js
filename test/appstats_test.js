@@ -322,6 +322,37 @@ describe('App Stats tests', function() {
             });
         });
 
+        it('checks getAppStats() and gets stats from application insights getAppInsightsFunctionStats', function (done) {
+            process.env.APPINSIGHTS_INSTRUMENTATIONKEY = 'test-key';
+            var getInvocationQueryStub = sinon.stub(AzureAppInsightStats.prototype, 'getAppInsightsFunctionStats').callsFake(
+                function fakeFn(functionNames, timestamp, callback) {
+                    if (functionNames[0] === 'Master' || functionNames[1] === 'Collector' || functionNames[2] === 'Updater') {
+                        let statistics = [
+                            mock.APPINSIGHTS_MASTER_INVOCATION_LOGS,
+                            mock.APPINSIGHTS_COLLECTOR_INVOCATION_LOGS,
+                            mock.APPINSIGHTS_UPDATER_INVOCATION_LOGS
+                        ];
+                        return callback(null, { statistics: statistics });
+                    }
+                    return callback(null, []);
+                }
+            );
+            var expectedStats = {
+                statistics: [
+                    { Master: { invocations: 5, errors: 3 } },
+                    { Collector: { invocations: 50, errors: 5 } },
+                    { Updater: { invocations: 15, errors: 10 } }
+                ]
+            };
+            process.env.APPINSIGHTS_INSTRUMENTATIONKEY = 'tests';
+            var stats = new AzureAppInsightStats(DEFAULT_APP_FUNCTIONS, mockCredentials, process.env.APP_SUBSCRIPTION_ID, process.env.APP_RESOURCE_GROUP);
+            stats.getAppStats('2022-12-22T14:31:39', function (err, appStats) {
+                getInvocationQueryStub.restore();
+                assert.deepEqual(expectedStats, appStats);
+                done();
+            });
+        });
+
         it('checks getAppStats() return values from Insights API to test Master stats parsing', function (done) {
             var query = mock.setKustoQuery('Master');
             var insightsClient = new ApplicationInsightsDataClient(mockCredentials, { subscriptionId: process.env.APP_SUBSCRIPTION_ID });
