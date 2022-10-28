@@ -232,60 +232,78 @@ class AzureAppInsightStats extends AzureAppStats {
     }
 
     getFunctionStats(functionName, timestamp, callback) {
-        if (process.env.APPINSIGHTS_INSTRUMENTATIONKEY || process.env.APPLICATIONINSIGHTS_CONNECTION_STRING) {
-            const managementClient = new ApplicationInsightsManagementClient(new DefaultAzureCredential(), this.subscriptionId);
-            managementClient.components.listByResourceGroup(this.resourceGroup).then((result) => {
-                const query = {
-                    "query": `requests
-                            | where operation_Name =~ '${functionName}'
-                            | order by timestamp desc
-                            | where success == "True" or success == "False"
-                            | summarize errors = countif(success == "False"),invocations = countif(success == "True" or success == "False") by operation_Name
-                            | extend details = pack_all()
-                            | summarize Result = make_list(details)`, timespan: 'PT15M'
-                };
-                const insightsClient = new ApplicationInsightsDataClient(this.tokenCredentials, { subscriptionId: this.subscriptionId });
-
-                insightsClient.query.execute(result[0].appId, query).then((result) => {
-                    try {
-                        const data = JSON.parse(result.tables[0].rows[0]);
-                        if (data.length) {
-                            const dataObj = { [data[0].operation_Name]: { invocations: data[0].invocations, errors: data[0].errors } };
-                            return callback(null, dataObj);
-                        } else {
-                            const dataObj = { [functionName]: { invocations: 0, errors: 0 } };
-                            return callback(null, dataObj);
-                        }
-                    } catch (err) {
-                        let errMessage = `An error occurred, while getting statistics ${err}`;
-                        return callback(errMessage, null);
+        super.getFunctionStats(functionName, timestamp, callback);
+    }
+    
+    getAppInsightsFunctionStats(functionNames, timestamp, callback) {
+        var appstats = this;
+        const managementClient = new ApplicationInsightsManagementClient(new DefaultAzureCredential(), this.subscriptionId);
+        managementClient.components.listByResourceGroup(this.resourceGroup).then((result) => {
+            const insightsClient = new ApplicationInsightsDataClient(this.tokenCredentials, { subscriptionId: this.subscriptionId });
+            let stringifiedFunctionNames = JSON.stringify(functionNames).replace(/\[|\]/g, '');
+            let query = {
+                "query": `requests
+                    | where operation_Name in (${stringifiedFunctionNames})
+                    | where timestamp > ago(15m)
+                    | order by timestamp desc
+                    | where success == "True" or success == "False"
+                    | summarize errors = countif(success == "False"),invocations = countif(success == "True" or success == "False") by operation_Name
+                    | extend details = pack_all()
+                    | summarize Result = make_list(details,128)`
+            };
+            insightsClient.query.execute(result[0].appId, query).then((result) => {
+                try {
+                    const data = JSON.parse(result.tables[0].rows[0]);
+                    if (data.length) {
+                        const mapResult = data.map((item) => {
+                            return { [item.operation_Name]: { invocations: item.invocations, errors: item.errors } };
+                        });
+                        return callback(null, { statistics: mapResult });
+                    } else {
+                        async.map(functionNames,
+                            function (fname, callback) {
+                                appstats.getFunctionStats(fname, timestamp, callback);
+                            },
+                            function (mapErr, mapsResult) {
+                                if (mapErr) {
+                                    return callback(mapErr);
+                                } else {
+                                    return callback(null, { statistics: mapsResult });
+                                }
+                            });
                     }
-                }).catch((err) => {
-                    let errMessage = `An error occurred, while executing application insights query ${err}`;
+                } catch (err) {
+                    let errMessage = `An error occurred, while getting statistics ${err}`;
                     return callback(errMessage, null);
-                });
+                }
             }).catch((err) => {
-                let errMessage = `An error occurred, while getting application insights appId ${err}`;
+                let errMessage = `An error occurred, while executing application insights query ${err}`;
                 return callback(errMessage, null);
             });
-        } else {
-            super.getFunctionStats(functionName, timestamp, callback);
-        }
+        }).catch((err) => {
+            let errMessage = `An error occurred, while getting application insights appId ${err}`;
+            return callback(errMessage, null);
+        });
+
     }
 
     getAppStats(timestamp, callback) {
         var appstats = this;
-        async.map(appstats._functionNames,
-            function (fname, callback) {
-                appstats.getFunctionStats(fname, timestamp, callback);
-            },
-            function (mapErr, mapsResult) {
-                if (mapErr) {
-                    return callback(mapErr);
-                } else {
-                    return callback(null, { statistics: mapsResult });
-                }
-            });
+        if (process.env.APPINSIGHTS_INSTRUMENTATIONKEY || process.env.APPLICATIONINSIGHTS_CONNECTION_STRING) {
+            appstats.getAppInsightsFunctionStats(appstats._functionNames, timestamp, callback);
+        } else {
+            async.map(appstats._functionNames,
+                function (fname, callback) {
+                    appstats.getFunctionStats(fname, timestamp, callback);
+                },
+                function (mapErr, mapsResult) {
+                    if (mapErr) {
+                        return callback(mapErr);
+                    } else {
+                        return callback(null, { statistics: mapsResult });
+                    }
+                });
+        }
     };
 
 }

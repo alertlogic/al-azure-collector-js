@@ -221,15 +221,17 @@ function getAuthResp() {
     };
 }
 
-function setKustoQuery(functionName) {
+function setKustoQuery(functionNames) {
+  let stringifiedFunctionNames = JSON.stringify(functionNames).replace(/\[|\]/g, '');
   return {
     "query": `requests
-            | where operation_Name =~ '${functionName}'
-            | order by timestamp desc
-            | where success == "True" or success == "False"
-            | summarize errors = countif(success == "False"),invocations = countif(success == "True" or success == "False") by operation_Name
-            | extend details = pack_all()
-            | summarize Result = make_list(details)`, timespan: 'PT15M'
+    | where operation_Name in (${stringifiedFunctionNames})
+    | where timestamp > ago(15m)
+    | order by timestamp desc
+    | where success == "True" or success == "False"
+    | summarize errors = countif(success == "False"),invocations = countif(success == "True" or success == "False") by operation_Name
+    | extend details = pack_all()
+    | summarize Result = make_list(details,128)`
   };
 }
 
@@ -455,6 +457,31 @@ var UNPARSED_APPINSIGHTS_COLLECTOR_INVOCATION_LOGS = {
   ]
 };
 
+var UNPARSED_APPINSIGHTS_ALL_FUNCTIONS_INVOCATION_LOGS = {
+  "tables": [
+    {
+      "name": "PrimaryResult",
+      "columns": [
+        {
+          "name": "Result",
+          "type": "dynamic"
+        }
+      ],
+      "rows": [
+        [
+          "[{\"operation_Name\":\"Collector\",\"errors\":5,\"invocations\":50},{\"operation_Name\":\"Updater\",\"errors\":10,\"invocations\":15},{\"operation_Name\":\"Master\",\"errors\":3,\"invocations\":5}]"
+        ]
+      ]
+    }
+  ]
+};
+
+var PARSED_APPINSIGHTS_ALL_FUNCTIONS_INVOCATION_LOGS = [
+  { Collector: { invocations: 50, errors: 5 } },
+  { Updater: { invocations: 15, errors: 10 } },
+  { Master: { invocations: 5, errors: 3 } }
+];
+
 var UNPARSED_APPINSIGHTS_MASTER_INVOCATION_LOGS = {
   "tables": [
       {
@@ -650,6 +677,8 @@ module.exports = {
     UNPARSED_APPINSIGHTS_COLLECTOR_INVOCATION_LOGS:UNPARSED_APPINSIGHTS_COLLECTOR_INVOCATION_LOGS,
     UNPARSED_APPINSIGHTS_MASTER_INVOCATION_LOGS:UNPARSED_APPINSIGHTS_MASTER_INVOCATION_LOGS,
     UNPARSED_APPINSIGHTS_UPDATER_INVOCATION_LOGS:UNPARSED_APPINSIGHTS_UPDATER_INVOCATION_LOGS,
+    UNPARSED_APPINSIGHTS_ALL_FUNCTIONS_INVOCATION_LOGS:UNPARSED_APPINSIGHTS_ALL_FUNCTIONS_INVOCATION_LOGS,
+    PARSED_APPINSIGHTS_ALL_FUNCTIONS_INVOCATION_LOGS:PARSED_APPINSIGHTS_ALL_FUNCTIONS_INVOCATION_LOGS,
     CHECKIN_RESPONSE_OK: CHECKIN_RESPONSE_OK,
     getAzureWebApp: getAzureWebApp,
     getAuthResp: getAuthResp,
