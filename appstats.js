@@ -240,7 +240,7 @@ class AzureAppInsightStats extends AzureAppStats {
         const managementClient = new ApplicationInsightsManagementClient(new DefaultAzureCredential(), this.subscriptionId);
         managementClient.components.listByResourceGroup(this.resourceGroup).then((result) => {
             const insightsClient = new ApplicationInsightsDataClient(this.tokenCredentials, { subscriptionId: this.subscriptionId });
-            let stringifiedFunctionNames = JSON.stringify(functionNames).replace(/\[|\]/g,'');
+            let stringifiedFunctionNames = JSON.stringify(functionNames).replace(/\[|\]/g, '');
             let query = {
                 "query": `requests
                     | where operation_Name in (${stringifiedFunctionNames})
