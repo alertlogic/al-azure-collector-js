@@ -8,7 +8,7 @@ stages:
             - pull_request
             - pull_request:
                 trigger_phrase: test it
-        image: node:12
+        image: node:14
         compute_size: small
         commands:
             - make test
@@ -17,9 +17,14 @@ stages:
         name: NPM Push - Publish
         when:
             - push: ['npm']
-        image: node:12
+        image: node:14
         compute_size: small
         commands:
+            - make test
+            - git clone git@algithub.pd.alertlogic.net:alertlogic/al-ps-tools.git
+            - cp coverage/cobertura-coverage.xml al-azure-collector-js.coverage.xml
+            - bash ./al-ps-tools/helpers/collect.sh -c 'al-azure-collector-js.coverage.xml'
+            - rm -rf ./al-ps-tools/
             - |
               set -ex
               
@@ -46,4 +51,5 @@ stages:
                  echo "NOT PUBLISHING $PKGNAME $PKGVERSION"
               fi
             - echo done
-            
+        outputs:
+            file: ./.ps_outputs/*   
