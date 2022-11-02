@@ -2,41 +2,44 @@ version: 1.0
 service_name: al-azure-collector-js
 
 stages:
-    -
-        name: PR Test
-        when:
-            - pull_request
-            - pull_request:
+    - name: PR Test
+      when:
+          - pull_request
+          - pull_request:
                 trigger_phrase: test it
-        image: node:12
-        compute_size: small
-        commands:
-            - make test
+      image: node:12
+      compute_size: small
+      commands:
+          - make test
+          - git clone git@algithub.pd.alertlogic.net:alertlogic/al-ps-tools.git
+          - cp coverage/cobertura-coverage.xml al-azure-collector-js.coverage.xml
+          - bash ./al-ps-tools/helpers/collect.sh -c 'al-azure-collector-js.coverage.xml'
+      ooutputs:
+            file: ./.ps_outputs/*
 
-    -
-        name: NPM Push - Publish
-        when:
-            - push: ['npm']
-        image: node:12
-        compute_size: small
-        commands:
-            - |
+    - name: NPM Push - Publish
+      when:
+          - push: ["npm"]
+      image: node:12
+      compute_size: small
+      commands:
+          - |
               set -ex
-              
+
               echo //registry.npmjs.org/:_authToken=$NPM_TOKEN > .npmrc
               npm whoami
-              
+
               PKGNAME=$(node -e 'console.log(require("./package.json").name)')
               PKGVERSION=$(node -e 'console.log(require("./package.json").version)')
               WORDCOUNT=$(npm view "${PKGNAME}@${PKGVERSION}" | wc -c)
-              
+
               git config --global credential.helper \'store\' || true
               echo "https://$ALPS_GH_USER:$ALPS_GH_TOKEN@github.com" > ~/.git-credentials
               git checkout npm
               git tag -a $PKGVERSION -m "$PKGNAME release $PKGVERSION" HEAD
-              
+
               npm install
-              
+
               if [ "$WORDCOUNT" -eq 0 ]; then
                  echo "PUBLISHING $PKGNAME $PKGVERSION"
                  npm run lint
@@ -45,5 +48,4 @@ stages:
               else
                  echo "NOT PUBLISHING $PKGNAME $PKGVERSION"
               fi
-            - echo done
-            
+          - echo done
