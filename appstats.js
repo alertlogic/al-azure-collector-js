@@ -223,12 +223,18 @@ class AzureWebAppStats extends AzureAppStats {
 }
 
 class AzureAppInsightStats extends AzureAppStats {
-    constructor(functionNames = [], tokenCredentials, subscriptionId, resourceGroup) {
+    constructor(azureContext, functionNames = [], tokenCredentials, subscriptionId, resourceGroup) {
         super(functionNames);
+        this.azureContext = azureContext;
         this._functionNames = functionNames;
         this.tokenCredentials = tokenCredentials;
         this.subscriptionId = subscriptionId;
         this.resourceGroup = resourceGroup;
+        this.invocationsCount = [];
+    }
+
+    setFunctionStats(invocationsCount) {
+        this.invocationsCount = invocationsCount;
     }
 
     getFunctionStats(functionName, timestamp, callback) {
@@ -260,17 +266,22 @@ class AzureAppInsightStats extends AzureAppStats {
                         });
                         return callback(null, { statistics: mapResult });
                     } else {
-                        async.map(functionNames,
-                            function (fname, callback) {
-                                appstats.getFunctionStats(fname, timestamp, callback);
-                            },
-                            function (mapErr, mapsResult) {
-                                if (mapErr) {
-                                    return callback(mapErr);
-                                } else {
-                                    return callback(null, { statistics: mapsResult });
-                                }
-                            });
+                        appstats.azureContext.log.info(`appstats.invocationsCount ${JSON.stringify(appstats.invocationsCount)}`)
+                        if (appstats.invocationsCount.length > 0) {
+                            return callback(null, { statistics: appstats.invocationsCount });
+                        } else {
+                            async.map(functionNames,
+                                function (fname, callback) {
+                                    appstats.getFunctionStats(fname, timestamp, callback);
+                                },
+                                function (mapErr, mapsResult) {
+                                    if (mapErr) {
+                                        return callback(mapErr);
+                                    } else {
+                                        return callback(null, { statistics: mapsResult });
+                                    }
+                                });
+                        }
                     }
                 } catch (err) {
                     let errMessage = `An error occurred, while getting statistics ${err}`;
@@ -292,17 +303,21 @@ class AzureAppInsightStats extends AzureAppStats {
         if (process.env.APPINSIGHTS_INSTRUMENTATIONKEY || process.env.APPLICATIONINSIGHTS_CONNECTION_STRING) {
             appstats.getAppInsightsFunctionStats(appstats._functionNames, timestamp, callback);
         } else {
-            async.map(appstats._functionNames,
-                function (fname, callback) {
-                    appstats.getFunctionStats(fname, timestamp, callback);
-                },
-                function (mapErr, mapsResult) {
-                    if (mapErr) {
-                        return callback(mapErr);
-                    } else {
-                        return callback(null, { statistics: mapsResult });
-                    }
-                });
+            if (appstats.invocationsCount.length > 0) {
+                return callback(null, { statistics: appstats.invocationsCount });
+            } else {
+                async.map(appstats._functionNames,
+                    function (fname, callback) {
+                        appstats.getFunctionStats(fname, timestamp, callback);
+                    },
+                    function (mapErr, mapsResult) {
+                        if (mapErr) {
+                            return callback(mapErr);
+                        } else {
+                            return callback(null, { statistics: mapsResult });
+                        }
+                    });
+            }
         }
     };
 

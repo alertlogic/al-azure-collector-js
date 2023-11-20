@@ -712,6 +712,43 @@ describe('Master tests', function() {
             });
         });
         
+        it('Verify checkin with custom health-check error connection limit exhausted', function(done) {
+            var errMessage = {
+                "message": "request to http://127.0.0.1:41512/msi/token/?resource=https%3A%2F%2Fmanagement.azure.com%2F&api-version=2017-09-01 failed, reason: connect EACCES 127.0.0.1:41512 - Local (undefined:undefined)",
+                "type": "system",
+                "errno": "EACCES",
+                "code": "EACCES"
+            }; 
+            var customHealthFuns = [
+                function(m, callback) {
+                    return callback(null);
+                },
+                function(m, callback) {
+                    return callback(errMessage);
+                }
+            ];
+            var master = new AlAzureMaster(mock.DEFAULT_FUNCTION_CONTEXT, 'ehub', '1.0.0', customHealthFuns);
+            master.checkin('2017-12-22T14:31:39', function(err){
+                if (err) console.log(err);
+                const expectedCheckin = { 
+                    body: {
+                        version: '1.0.0',
+                        app_tenant_id: 'tenant-id',
+                        collection_stats: { 'log': { 'bytes': 10, 'events': 15 } },
+                        host_id: 'existing-host-id',
+                        source_id: 'existing-source-id',
+                        statistics: [{ 'Master': { 'errors': 0, 'invocations': 2 } }, { 'Collector': { 'errors': 1, 'invocations': 10 } }, { 'Updater': { 'errors': 0, 'invocations': 0 } }],
+                        dl_stats: { dl_count: 6, max_dl_size: 4257 },
+                        status: 'error',
+                        details: [errMessage],
+                        error_code: 'ALAZU000005'
+                    }
+                };
+                const expectedUrl = '/azure/ehub/checkin/subscription-id/kktest11-rg/kktest11-name';
+                sinon.assert.calledWithMatch(fakePost, expectedUrl, expectedCheckin);
+                done();
+            });
+        });
         
     });
 });
