@@ -127,7 +127,7 @@ class AlAzureMaster {
         this._azureCreds=this.getTokenCredentials();
         if (process.env.FUNCTIONS_EXTENSION_VERSION > '~3') {
             const tokenCredentials = this.getTokenCredentials(APPLICATION_INSIGHTS_ENDPOINTS);
-            this._appStats = new AzureAppInsightStats(collectorAzureFunNames, tokenCredentials, this._subscriptionId, this._resourceGroup);
+            this._appStats = new AzureAppInsightStats(azureContext, collectorAzureFunNames, tokenCredentials, this._subscriptionId, this._resourceGroup);
         } else {
             this._appStats = new AzureWebAppStats(collectorAzureFunNames);
         }
@@ -353,8 +353,12 @@ class AlAzureMaster {
                     master._azureContext.log.warn('Health check failed with: ',  errStatus);
                     status = master.errorStatusFmt('ALAZU000004', errStatus);
                 } else {
-                    master._azureContext.log.warn('Health check failed with',  errStatus.details);
-                    status = errStatus;
+                    if(errStatus.details){
+                        master._azureContext.log.warn('Health check failed with',  errStatus.details);
+                        status = errStatus;
+                    }else{
+                        status = master.errorStatusFmt('ALAZU000005', errStatus);
+                    }
                 }
             } else {
                 status = {

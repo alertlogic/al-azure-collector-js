@@ -271,7 +271,7 @@ describe('App Stats tests', function() {
             var expectedStats = {
                 statistics: []
             };
-            var stats = new AzureAppInsightStats([],mockCredentials,process.env.APP_SUBSCRIPTION_ID,process.env.APP_RESOURCE_GROUP);
+            var stats = new AzureAppInsightStats({},[],mockCredentials,process.env.APP_SUBSCRIPTION_ID,process.env.APP_RESOURCE_GROUP);
             stats.getAppStats('2022-12-22T14:31:39', function (err, appStats) {
               
                 assert.deepEqual(expectedStats, appStats);
@@ -287,7 +287,7 @@ describe('App Stats tests', function() {
                     { Updater: { invocations: 0, errors: 0 } }
                 ]
             };
-            var stats = new AzureAppInsightStats(DEFAULT_APP_FUNCTIONS, mockCredentials, process.env.APP_SUBSCRIPTION_ID, process.env.APP_RESOURCE_GROUP);
+            var stats = new AzureAppInsightStats({},DEFAULT_APP_FUNCTIONS, mockCredentials, process.env.APP_SUBSCRIPTION_ID, process.env.APP_RESOURCE_GROUP);
             stats.getAppStats('2022-12-22T14:31:39', function (err, appStats) {
                 assert.deepEqual(expectedStats, appStats);
                 done();
@@ -314,7 +314,7 @@ describe('App Stats tests', function() {
                     { Updater: { invocations: 15, errors: 10 } }
                 ]
             };
-            var stats = new AzureAppInsightStats(DEFAULT_APP_FUNCTIONS, mockCredentials, process.env.APP_SUBSCRIPTION_ID, process.env.APP_RESOURCE_GROUP);
+            var stats = new AzureAppInsightStats({},DEFAULT_APP_FUNCTIONS, mockCredentials, process.env.APP_SUBSCRIPTION_ID, process.env.APP_RESOURCE_GROUP);
             stats.getAppStats('2022-12-22T14:31:39', function (err, appStats) {
                 getInvocationQueryStub.restore();
                 assert.deepEqual(expectedStats, appStats);
@@ -344,7 +344,7 @@ describe('App Stats tests', function() {
                     { Updater: { invocations: 15, errors: 10 } }
                 ]
             };
-            var stats = new AzureAppInsightStats(DEFAULT_APP_FUNCTIONS, mockCredentials, process.env.APP_SUBSCRIPTION_ID, process.env.APP_RESOURCE_GROUP);
+            var stats = new AzureAppInsightStats({},DEFAULT_APP_FUNCTIONS, mockCredentials, process.env.APP_SUBSCRIPTION_ID, process.env.APP_RESOURCE_GROUP);
             stats.getAppStats('2022-12-22T14:31:39', function (err, appStats) {
                 getInvocationQueryStub.restore();
                 assert.deepEqual(expectedStats, appStats);
