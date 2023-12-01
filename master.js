@@ -356,8 +356,11 @@ class AlAzureMaster {
                     if(errStatus.details){
                         master._azureContext.log.warn('Health check failed with',  errStatus.details);
                         status = errStatus;
+                    }else if(errStatus.message){
+                        master._azureContext.log.warn('Health check failed with error message',  errStatus.message);
+                        status = master.errorStatusFmt('ALAZU000005', errStatus.message);
                     }else{
-                        status = master.errorStatusFmt('ALAZU000005', errStatus);
+                        status = master.errorStatusFmt('ALAZU000006', JSON.stringify(errStatus));
                     }
                 }
             } else {
