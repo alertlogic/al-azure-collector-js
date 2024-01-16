@@ -292,8 +292,12 @@ class AzureAppInsightStats extends AzureAppStats {
                 return callback(errMessage, null);
             });
         }).catch((err) => {
-            let errMessage = `An error occurred, while getting application insights appId ${err}`;
-            return callback(errMessage, null);
+            if (appstats.invocationsCount.length > 0) {
+                return callback(null, { statistics: appstats.invocationsCount });
+            } else {
+                let errMessage = `An error occurred, while getting application insights appId ${err}`;
+                return callback(errMessage, null);
+            }
         });
 
     }
