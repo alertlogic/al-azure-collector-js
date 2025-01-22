@@ -11,6 +11,7 @@
 
 const moment = require('moment');
 const alcollector = require('@alertlogic/al-collector-js');
+const AzureCollectionStats = require('./appstats').AzureCollectionStats;
 
 const COLLECTOR_RETRY_OPTS = {
     factor: 2,
@@ -62,6 +63,7 @@ class AlAzureCollector {
         var ingestEndpoint = alIngestEndpoint ? alIngestEndpoint : process.env.APP_INGEST_ENDPOINT;
         this._ingestc = new alcollector.IngestC(ingestEndpoint, aimsc, 'azure_function', COLLECTOR_RETRY_OPTS);
         this._alDataResidency = alDataResidency ? alDataResidency : process.env.CUSTOMCONNSTR_APP_AL_RESIDENCY;
+        this._collectionStats = new AzureCollectionStats(azureContext);
     }
     
     _defaultHostmetaElems() {
@@ -114,6 +116,7 @@ class AlAzureCollector {
         // Somebody can still pass 'undefined' as hostmetaElems and it will be added to args list.
         var hm = hostmetaElems ? hostmetaElems : this._defaultHostmetaElems();
         var ingestc = this._ingestc;
+        var stats = this._collectionStats;
         
         if (messages && messages.length > 0) {
             let buildPayloadObj = {
@@ -131,14 +134,19 @@ class AlAzureCollector {
                 } else {
                     ingestc.sendLogmsgs(data.payload)
                         .then( resp => {
-                            let lmcStats = this._prepareLmcStats(data.raw_count, data.raw_bytes);
-                            ingestc.sendLmcstats(JSON.stringify([lmcStats]))
-                                .then(resp => {
-                                    return callback(null, resp);
-                                })
-                                .catch(exception => {
-                                    return callback(null);
-                                });
+                            stats.putLogStats(data.raw_bytes, data.raw_count, callback).then( resp => {
+                                 let lmcStats = this._prepareLmcStats(data.raw_count, data.raw_bytes);
+                                    ingestc.sendLmcstats(JSON.stringify([lmcStats]))
+                                           .then(resp => {
+                                               return callback(null, resp);
+                                           })
+                                           .catch(exception => {
+                                               return callback(null);
+                                           });
+                            })
+                            .catch(exception => {
+                                return callback(null);
+                            })
                         })
                         .catch( err => {
                             return callback(err);
