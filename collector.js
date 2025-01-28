@@ -132,25 +132,26 @@ class AlAzureCollector {
                 if (err) {
                     return callback(err);
                 } else {
-                    ingestc.sendLogmsgs(data.payload)
-                        .then( resp => {
-                            stats.putLogStats(data.raw_bytes, data.raw_count, callback).then( resp => {
-                                 let lmcStats = this._prepareLmcStats(data.raw_count, data.raw_bytes);
-                                    ingestc.sendLmcstats(JSON.stringify([lmcStats]))
-                                           .then(resp => {
-                                               return callback(null, resp);
-                                           })
-                                           .catch(exception => {
-                                               return callback(null);
-                                           });
-                            })
-                            .catch(exception => {
-                                return callback(null);
-                            })
-                        })
-                        .catch( err => {
-                            return callback(err);
-                        });
+                   ingestc.sendLogmsgs(data.payload).then(resp => {
+                       stats.putLogStats(data.raw_bytes, data.raw_count, (err) => {
+                           if (err) {
+                               return callback(err);
+                           }
+
+                           let lmcStats = this._prepareLmcStats(data.raw_count, data.raw_bytes);
+
+                           ingestc.sendLmcstats(JSON.stringify([lmcStats]))
+                                  .then(resp => {
+                                      return callback(null, resp);
+                                  })
+                                  .catch(exception => {
+                                      return callback(null);
+                                  });
+                       });
+                   })
+                          .catch(err => {
+                              return callback(err);
+                          });
                 }
             });
         } else {
