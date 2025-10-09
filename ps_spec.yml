@@ -8,7 +8,7 @@ stages:
             - pull_request
             - pull_request:
                 trigger_phrase: test it
-        image: node:20
+        image: node:22
         compute_size: small
         commands:
             - make test
@@ -17,7 +17,7 @@ stages:
         name: NPM Push - Publish
         when:
             - push: ['npm']
-        image: node:20
+        image: node:22
         compute_size: small
         commands:
             - make test
