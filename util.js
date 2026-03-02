@@ -9,7 +9,6 @@
  */
  
 const path = require('path');
-const async = require('async');
 /**
  *  @function
  *  returns Azure token cache filename.
@@ -52,45 +51,43 @@ const verifyObjProps = function (obj, expectedProps) {
     return false;
 }
 
- const getAppSettings = function (azureClientObject, callback) {
+ const getAppSettings = async function (azureClientObject) {
         return azureClientObject.azureWebsiteClient.webApps.listApplicationSettings(
-            azureClientObject.resourceGroup, azureClientObject.webAppName, null,
-            function(err, result, request, response) {
-                if (err) {
-                    return callback(err);
-                } else {
-                    return callback(null, result);
-                }
-        });
-    }
-
- const setAppSettings = function (settings, azureClientObject, callback) {
-        azureClientObject.azureWebsiteClient.webApps.updateApplicationSettings(
-            azureClientObject.resourceGroup, azureClientObject.webAppName, settings, null,
-            function(err, result, request, response) {
-                if (err) {
-                    return callback(err);
-                } else {
-                    return callback(null);
-                }
-        });
-    }
-   
- const updateAppSettings = function (newSettings, azureClientObject, callback) {
-     async.waterfall([
-         function (asyncCallback) {
-             return getAppSettings(azureClientObject, asyncCallback);
-         },
-         function (appSettings, asyncCallback) {
-             var updatedProps = Object.assign({}, appSettings.properties, newSettings);
-             var updatedEnv = Object.assign({}, process.env, newSettings);
-             process.env = updatedEnv;
-             appSettings.properties = updatedProps;
-             return setAppSettings(appSettings, azureClientObject, asyncCallback);
-         }],
-            callback
+            azureClientObject.resourceGroup, azureClientObject.webAppName, null
         );
     }
+
+ const setAppSettings = async function (settings, azureClientObject) {
+        await azureClientObject.azureWebsiteClient.webApps.updateApplicationSettings(
+            azureClientObject.resourceGroup, azureClientObject.webAppName, settings, null
+        );
+    }
+   
+ const updateAppSettings = async function (newSettings, azureClientObject) {
+     const appSettings = await getAppSettings(azureClientObject);
+     var updatedProps = Object.assign({}, appSettings.properties, newSettings);
+     var updatedEnv = Object.assign({}, process.env, newSettings);
+     process.env = updatedEnv;
+     appSettings.properties = updatedProps;
+     await setAppSettings(appSettings, azureClientObject);
+ }
+
+/**
+ * Helper function to ensure connection string includes EndpointSuffix for backward compatibility
+ * @param {String} connectionString - Azure storage connection string
+ * @return {String} connection string with EndpointSuffix
+ */
+const ensureEndpointSuffix = function(connectionString) {
+    if (!connectionString) {
+        return connectionString;
+    }
+    // Check if EndpointSuffix already exists
+    if (connectionString.includes('EndpointSuffix')) {
+        return connectionString;
+    }
+    // Add EndpointSuffix for public Azure cloud
+    return connectionString + ';EndpointSuffix=core.windows.net';
+};
 
 
 
@@ -99,6 +96,7 @@ module.exports = {
         verifyObjProps: verifyObjProps,
         updateAppSettings: updateAppSettings,
         getAppSettings: getAppSettings,
-        setAppSettings: setAppSettings
+        setAppSettings: setAppSettings,
+        ensureEndpointSuffix: ensureEndpointSuffix
 
 };

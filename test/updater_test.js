@@ -14,19 +14,17 @@ const AlAzureUpdater = require('../updater').AlAzureUpdater;
 const mock = require('./mock');
 
 describe('Updater tests', function() {
-    beforeEach(function(done) {
+    beforeEach(function() {
         if (!nock.isActive()) {
             nock.activate();
         }
-        done();
     });
     
-    afterEach(function(done) {
+    afterEach(function() {
         nock.cleanAll();
-        done();
     });
     
-    it('Valid input', function(done) {
+    it('Valid input', async function() {
         var tokenMock = nock('https://login.microsoftonline.com:443', {'encodedQueryParams':true})
         .post(/token$/, /.*/ )
         .query(true)
@@ -45,14 +43,12 @@ describe('Updater tests', function() {
             webAppName: 'app-name'
         };
         var upd = new AlAzureUpdater(azureOpts);
-        upd.syncWebApp(function(err){
-            assert.ok(tokenMock);
-            assert.ok(syncMock);
-            done();
-        });
+        await upd.syncWebApp();
+        assert.ok(tokenMock);
+        assert.ok(syncMock);
     });
     
-    it('Valid input from process env', function(done) {
+    it('Valid input from process env', async function() {
         var tokenMock = nock('https://login.microsoftonline.com:443', {'encodedQueryParams':true})
         .post(/token$/, /.*/ )
         .query(true)
@@ -71,11 +67,9 @@ describe('Updater tests', function() {
         process.env.CUSTOMCONNSTR_APP_CLIENT_SECRET = 'client-secret';
         
         var upd = new AlAzureUpdater();
-        upd.syncWebApp(function(err){
-            assert.ok(tokenMock);
-            assert.ok(syncMock);
-            done();
-        });
+        await upd.syncWebApp();
+        assert.ok(tokenMock);
+        assert.ok(syncMock);
     });
 });
 

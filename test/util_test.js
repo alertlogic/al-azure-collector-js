@@ -17,7 +17,7 @@ describe('Util tests', function() {
     after(function(){
     });
 
-    it('verifyObjProps', function(done) {
+    it('verifyObjProps', function() {
         var obj = {
             a: '1',
             b: '2',
@@ -29,7 +29,6 @@ describe('Util tests', function() {
         assert.deepEqual({d: undefined}, m_util.verifyObjProps(obj, {d: '2'}));
         assert.deepEqual({a: '1'}, m_util.verifyObjProps(obj, {a: 1}));
         assert.deepEqual(false, m_util.verifyObjProps(obj, {'b': '2'}));
-        done();
     });
 
 });

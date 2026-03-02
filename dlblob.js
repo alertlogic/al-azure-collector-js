@@ -20,12 +20,14 @@
  
 'use strict';
 
-const async = require('async');
-const azureStorage = require('azure-storage');
+const parse = require('parse-key-value');
+const { BlobServiceClient } = require("@azure/storage-blob");
+const { ensureEndpointSuffix } = require('./util');
 
-const CONCURRENT_BLOB_PROCESS_NUM = 20;
-const DLQ_SAMPLE_SIZE = 2;
-const LIST_BLOB_PAGE_SIZE = 100;
+const CONCURRENT_BLOB_PROCESS_NUM = 20;  // Max concurrent blob processing operations
+const DLQ_SAMPLE_SIZE = 2;               // Number of sample dead letter messages to retrieve
+const LIST_BLOB_PAGE_SIZE = 100;         // Page size for listing blobs
+const MAX_DL_BLOBS_TO_LIST = 5000;       // Max dead letter blobs to list per operation
 const DEFAULT_DL_CONTAINER_NAME = 'alertlogic-dl';
 
 
@@ -35,13 +37,13 @@ const DEFAULT_DL_CONTAINER_NAME = 'alertlogic-dl';
  *
  * @constructor
  * @param {Object} context - context of Azure function.
- * @param {Function} processCallback - a blob processing callback(context, dlblob, dlblobText, callback)
+ * @param {Function} processCallback - an async blob processing function(context, blob, blobText)
  *
  */
 class AlAzureDlBlob {
     constructor(context, processCallback) {
         this._context = context;
-        this._blobService = azureStorage.createBlobService(process.env.AzureWebJobsStorage);
+        this._blobServiceClient = BlobServiceClient.fromConnectionString(ensureEndpointSuffix(process.env.AzureWebJobsStorage));
         this._processCallback = processCallback;
         this._listPageSize = process.env.DL_BLOB_PAGE_SIZE ? 
                 parseInt(process.env.DL_BLOB_PAGE_SIZE) : LIST_BLOB_PAGE_SIZE;
@@ -49,101 +51,134 @@ class AlAzureDlBlob {
                 process.env.APP_DL_CONTAINER_NAME : DEFAULT_DL_CONTAINER_NAME;
     };
     
-    getBlobService() {
-        return this._blobService;
+    getBlobServiceClient() {
+        return this._blobServiceClient;
     };
     
-    _findMaxDlBlobSize(dlblobs) {
-        var len = dlblobs.length, max = 0;
-        while (len--) {
-            const contentLen = Number(dlblobs[len].contentLength);
+    _findMaxDlBlobSize(blobs) {
+        let max = 0;
+        blobs.forEach(blob => {
+            const contentLen = Number(blob.properties.contentLength || 0);
             if (contentLen > max) {
                 max = contentLen;
             }
-        }
+        });
         return max;
     }
     
     /**
-     *  @function Retrieves the first page (5000) of dead letter blobs and finds the one with the maximum size.
+     *  @function Retrieves the first page of dead letter blobs and finds the one with the maximum size.
      *  
-     *  @param callback
-     *  @returns callback
+     *  @return Promise resolves to dlstats
      */
-    getDlBlobStats(callback) {
-        var dlblob = this;
-        return dlblob._blobService.listBlobsSegmentedWithPrefix(
-            dlblob._dlContainerName,
-            process.env.WEBSITE_SITE_NAME,
-            null, function(listErr, dlblobList) {
-                if (listErr) {
-                    return callback(listErr);
-                } else {
-                    const sample = dlblobList.entries.slice(0,DLQ_SAMPLE_SIZE);
-                    async.mapLimit(sample, CONCURRENT_BLOB_PROCESS_NUM, async.reflect(function(blob, asyncCallback) {
-                        return dlblob._getSampleMessage(blob, asyncCallback);
-                    }), (err, dlSample) => {
-                        if (err) return callback(err);
-                        let dlstats =  {
-                            dl_stats: {
-                                dl_count: dlblobList.entries.length,
-                                max_dl_size: dlblob._findMaxDlBlobSize(dlblobList.entries),
-                                dl_sample: JSON.stringify(dlSample)
-                            }
-                        };
-                        return callback(null, dlstats);
-                    });
+    async getDlBlobStats() {
+        try {
+            const containerClient = this._blobServiceClient.getContainerClient(this._dlContainerName);
+            const blobs = [];
+            
+            for await (const blob of containerClient.listBlobsFlat({ prefix: process.env.WEBSITE_SITE_NAME })) {
+                blobs.push(blob);
+                if (blobs.length >= MAX_DL_BLOBS_TO_LIST) {
+                    break;
                 }
-            });
+            }
+            
+            const sample = blobs.slice(0, DLQ_SAMPLE_SIZE);
+            const dlSample = await Promise.all(
+                sample.map(async (blob) => {
+                    return this._getSampleMessage(blob);
+                })
+            );
+            
+            return {
+                dl_stats: {
+                    dl_count: blobs.length,
+                    max_dl_size: this._findMaxDlBlobSize(blobs),
+                    dl_sample: JSON.stringify(dlSample)
+                }
+            };
+        } catch (error) {
+            throw error;
+        }
     };
     
-    processDlBlobs(timer, callback) {
-        var dlblob = this;
-        const options = {
-            maxResults: dlblob._listPageSize
-        };
-        this._blobService.listBlobsSegmentedWithPrefix(
-            dlblob._dlContainerName,
-            process.env.WEBSITE_SITE_NAME,
-            null, options,
-            function(listErr, data) {
-                if (listErr) {
-                    return callback(listErr);
-                } else {
-                    dlblob._context.log.verbose('Listed blobs: ', data.entries.length);
-                    async.mapLimit(data.entries, CONCURRENT_BLOB_PROCESS_NUM, async.reflect(function(blob, asyncCallback) {
-                        return dlblob._processDlBlob(blob, asyncCallback);
-                    }), callback);
+    async processDlBlobs(timer) {
+        try {
+            const containerClient = this._blobServiceClient.getContainerClient(this._dlContainerName);
+            const blobs = [];
+            
+            for await (const blob of containerClient.listBlobsFlat({ prefix: process.env.WEBSITE_SITE_NAME })) {
+                blobs.push(blob);
+                if (blobs.length >= this._listPageSize) {
+                    break;
                 }
-        });
+            }
+            
+            this._context.log.verbose('Listed blobs: ', blobs.length);
+            
+            const results = [];
+            for (let i = 0; i < blobs.length; i += CONCURRENT_BLOB_PROCESS_NUM) {
+                const chunk = blobs.slice(i, i + CONCURRENT_BLOB_PROCESS_NUM);
+                const chunkResults = await Promise.allSettled(
+                    chunk.map(async (blob) => {
+                        return this._processDlBlob(blob);
+                    })
+                );
+                results.push(...chunkResults);
+            }
+            
+            return results;
+        } catch (error) {
+            throw error;
+        }
     };
 
-    _getSampleMessage(blob, callback) {
-        var dlblob = this;
-        return dlblob._blobService.getBlobToText(dlblob._dlContainerName, blob.name, callback);
+    async _getSampleMessage(blob) {
+        try {
+            const containerClient = this._blobServiceClient.getContainerClient(this._dlContainerName);
+            const blockBlobClient = containerClient.getBlockBlobClient(blob.name);
+            const downloadBlockBlobResponse = await blockBlobClient.download(0);
+            const downloaded = await this._streamToString(downloadBlockBlobResponse.readableStreamBody);
+            return downloaded;
+        } catch (error) {
+            throw error;
+        }
     };
+
+    /**
+     * Helper function to read stream to string
+     */
+    async _streamToString(readableStream) {
+        return new Promise((resolve, reject) => {
+            const chunks = [];
+            readableStream.on("data", (data) => {
+                chunks.push(data.toString("utf8"));
+            });
+            readableStream.on("end", () => {
+                resolve(chunks.join(""));
+            });
+            readableStream.on("error", reject);
+        });
+    }
     
-    _processDlBlob(blob, callback) {
-        var dlblob = this;
-        dlblob._context.log.verbose('Processing blob: ', blob.name);
-        async.waterfall([
-            function(asyncCallback) {
-                return dlblob._blobService.getBlobToText(dlblob._dlContainerName, blob.name, asyncCallback);
-            },
-            function(blobData, blobReq, blobResp, asyncCallback) {
-                try {
-                    return dlblob._processCallback(dlblob._context, blob, blobData, asyncCallback);
-                } catch (ex) {
-                    return asyncCallback(ex);
-                }
-            },
-            function(asyncCallback) {
-                return dlblob._blobService.deleteBlob(dlblob._dlContainerName, blob.name, asyncCallback);
-            }
-        ], callback);
+    async _processDlBlob(blob) {
+        try {
+            this._context.log.verbose('Processing blob: ', blob.name);
+            
+            const containerClient = this._blobServiceClient.getContainerClient(this._dlContainerName);
+            const blockBlobClient = containerClient.getBlockBlobClient(blob.name);
+            const downloadBlockBlobResponse = await blockBlobClient.download(0);
+            const blobData = await this._streamToString(downloadBlockBlobResponse.readableStreamBody);
+            
+            await this._processCallback(this._context, blob, blobData);
+            
+            await blockBlobClient.delete();
+        } catch (error) {
+            throw error;
+        }
     };
 };
+
 module.exports = {
     AlAzureDlBlob: AlAzureDlBlob
 };
-

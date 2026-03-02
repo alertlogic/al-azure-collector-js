@@ -11,13 +11,13 @@ const assert = require('assert');
 const sinon = require('sinon');
 const nock = require('nock');
 const fs = require('fs');
-var azureStorage = require('azure-storage');
 
 const AzureWebAppStats = require('../appstats').AzureWebAppStats;
 const AzureAppInsightStats = require('../appstats').AzureAppInsightStats;
 const AzureCollectionStats = require('../appstats').AzureCollectionStats;
 const CollectionStatRecord = require('../appstats').CollectionStatRecord;
-const { ApplicationInsightsDataClient } = require("@azure/applicationinsights-query");
+const ApplicationInsightsQueryClient = require('../appstats').ApplicationInsightsQueryClient;
+const storageQueue = require("@azure/storage-queue");
 
 const mock = require('./mock');
 
@@ -27,10 +27,7 @@ process.env.APP_RESOURCE_GROUP = 'kktest11';
 const mockCredentials={signRequest:()=>{}};
 
 describe('App Stats tests', function() {
-    var clock;
-    
     before(function(){
-        clock = sinon.useFakeTimers();
         if (!nock.isActive()) {
             nock.activate();
         }
@@ -38,51 +35,37 @@ describe('App Stats tests', function() {
         //nock.recorder.rec();
     });
     after(function(){
-        clock.restore();
         nock.restore();
     });
     
     describe('AzureWebAppStats test', function() {
+        
         beforeEach(function(){
         });
-        afterEach(function(done) {
-            fs.unlink(mock.AL_TOKEN_CACHE_FILENAME, function(err){
-                done();
-            });
+        afterEach(async function() {
+            try {
+                await fs.promises.unlink(mock.AL_TOKEN_CACHE_FILENAME);
+            } catch (err) {
+                if (err.code !== 'ENOENT') throw err;
+            }
             nock.cleanAll();
         });
 
-        it('checks getAppStats() with no Functions', function(done) {
-            var msTableServiceStub = sinon.stub(azureStorage, 'createTableService').callsFake(
-                function fakeFn(account, key, host) {
-                    var mockObj = {
-                        queryEntities : function(table, query, token, callback) {
-                            return callback(null, {entries : []});
-                        }
-                    };
-                    return mockObj;
-                }
-            );
+        it('checks getAppStats() with no Functions', async function() {
             var expectedStats = {
                 statistics: []
             };
             var stats = new AzureWebAppStats();
-            stats.getAppStats('2017-12-22T14:31:39', function(err, appStats) {
-                msTableServiceStub.restore();
-                assert.deepEqual(expectedStats, appStats);
-                done();
-            });
+            const appStats = await stats.getAppStats('2017-12-22T14:31:39');
+            assert.deepEqual(expectedStats, appStats);
         });
         
-        it('checks getAppStats() with empty stats', function(done) {
-            var msTableServiceStub = sinon.stub(azureStorage, 'createTableService').callsFake(
-                function fakeFn(account, key, host) {
-                    var mockObj = {
-                        queryEntities : function(table, query, token, callback) {
-                            return callback(null, {entries : []});
-                        }
+        it('checks getAppStats() with empty stats', async function() {
+            var getFunctionStatsStub = sinon.stub(AzureWebAppStats.prototype, 'getFunctionStats').callsFake(
+                async function fakeFn(functionName) {
+                    return {
+                        [functionName]: { invocations: 0, errors: 0 }
                     };
-                    return mockObj;
                 }
             );
             var expectedStats = {
@@ -93,34 +76,21 @@ describe('App Stats tests', function() {
                 ]
             };
             var stats = new AzureWebAppStats(DEFAULT_APP_FUNCTIONS);
-            stats.getAppStats('2017-12-22T14:31:39', function(err, appStats) {
-                msTableServiceStub.restore();
-                assert.deepEqual(expectedStats, appStats);
-                done();
-            });
+            const appStats = await stats.getAppStats('2017-12-22T14:31:39');
+            getFunctionStatsStub.restore();
+            assert.deepEqual(expectedStats, appStats);
         });
-        
-        it('checks getAppStats() success', function(done) {
-            var msTableServiceStub = sinon.stub(azureStorage, 'createTableService').callsFake(
-                function fakeFn(account, key, host) {
-                    var mockObj = {
-                        queryEntities : function(table, query, token, callback) {
-                            if (query === 'Master')
-                                return callback(null, mock.MASTER_INVOCATION_LOGS);
-                            if (query === 'Collector')
-                                return callback(null, mock.COLLECTOR_INVOCATION_LOGS);
-                            if (query === 'Updater')
-                                return callback(null, mock.UPDATER_INVOCATION_LOGS);
-                            return callback(null, {entries : []});
-                        }
-                    };
-                    return mockObj;
-                }
-            );
-            
-            var getInvocationQueryStub = sinon.stub(AzureWebAppStats.prototype, '_getInvocationsQuery').callsFake(
-                function fakeFn(functionName, timestamp) {
-                    return functionName;
+
+        it('checks getAppStats() success', async function() {
+            var getInvocationQueryStub = sinon.stub(AzureWebAppStats.prototype, 'getFunctionStats').callsFake(
+                async function fakeFn(functionName, _timestamp) {
+                    if (functionName === 'Master')
+                        return { Master: { invocations: 3, errors: 2 } };
+                    if (functionName === 'Collector')
+                        return { Collector: { invocations: 3, errors: 1 } };
+                    if (functionName === 'Updater')
+                        return { Updater: { invocations: 2, errors: 1 } };
+                    return { [functionName]: { invocations: 0, errors: 0 } };
                 }
             );
             
@@ -133,35 +103,21 @@ describe('App Stats tests', function() {
             };
             
             var stats = new AzureWebAppStats(DEFAULT_APP_FUNCTIONS);
-            stats.getAppStats('2017-12-22T14:31:39', function(err, appStats) {
-                msTableServiceStub.restore();
-                getInvocationQueryStub.restore();
-                assert.deepEqual(expectedStats, appStats);
-                done();
-            });
+            const appStats = await stats.getAppStats('2017-12-22T14:31:39');
+            getInvocationQueryStub.restore();
+            assert.deepEqual(expectedStats, appStats);
         });
 
-        it('checks getAppStats() success with pagination', function(done) {
-            var msTableServiceStub = sinon.stub(azureStorage, 'createTableService').callsFake(
-                function fakeFn(account, key, host) {
-                    var mockObj = {
-                        queryEntities : function(table, query, token, callback) {
-                            if (query === 'Master')
-                                return callback(null, mock.MASTER_INVOCATION_LOGS);
-                            if (query === 'Collector')
-                                return callback(null, mock.COLLECTOR_INVOCATION_LOGS_CONTD);
-                            if (query === 'Updater')
-                                return callback(null, mock.UPDATER_INVOCATION_LOGS);
-                            return callback(null, {entries : []});
-                        }
-                    };
-                    return mockObj;
-                }
-            );
-
-            var getInvocationQueryStub = sinon.stub(AzureWebAppStats.prototype, '_getInvocationsQuery').callsFake(
-                function fakeFn(functionName, timestamp) {
-                    return functionName;
+        it('checks getAppStats() success with pagination', async function() {
+            var getInvocationQueryStub = sinon.stub(AzureWebAppStats.prototype, 'getFunctionStats').callsFake(
+                async function fakeFn(functionName, _timestamp) {
+                    if (functionName === 'Master')
+                        return { Master: { invocations: 3, errors: 2 } };
+                    if (functionName === 'Collector')
+                        return { Collector: { invocations: 11, errors: 0 } };
+                    if (functionName === 'Updater')
+                        return { Updater: { invocations: 2, errors: 1 } };
+                    return { [functionName]: { invocations: 0, errors: 0 } };
                 }
             );
 
@@ -174,40 +130,22 @@ describe('App Stats tests', function() {
             };
 
             var stats = new AzureWebAppStats(DEFAULT_APP_FUNCTIONS);
-            stats.getAppStats('2017-12-22T14:31:39', function(err, appStats) {
-                msTableServiceStub.restore();
-                getInvocationQueryStub.restore();
-                assert.deepEqual(expectedStats, appStats);
-                done();
-            });
+            const appStats = await stats.getAppStats('2017-12-22T14:31:39');
+            getInvocationQueryStub.restore();
+            assert.deepEqual(expectedStats, appStats);
         });
         
-        it('checks getAppStats() success with cont token (Updater)', function(done) {
-            var msTableServiceStub = sinon.stub(azureStorage, 'createTableService').callsFake(
-                function fakeFn(account, key, host) {
-                    var mockObj = {
-                        queryEntities : function(table, query, token, callback) {
-                            if (query === 'Master')
-                                return callback(null, mock.MASTER_INVOCATION_LOGS);
-                            if (query === 'Collector')
-                                return callback(null, mock.COLLECTOR_INVOCATION_LOGS);
-                            if (query === 'Updater') {
-                                if (token === 'cont-token') {
-                                    return callback(null, mock.UPDATER_INVOCATION_LOGS);
-                                } else {
-                                    return callback(null, mock.UPDATER_INVOCATION_LOGS_CONTD);
-                                }
-                            } 
-                            return callback(null, {entries : []});
-                        }
-                    };
-                    return mockObj;
-                }
-            );
-            
-            var getInvocationQueryStub = sinon.stub(AzureWebAppStats.prototype, '_getInvocationsQuery').callsFake(
-                function fakeFn(functionName, timestamp) {
-                    return functionName;
+        it('checks getAppStats() success with cont token (Updater)', async function() {
+            var getInvocationQueryStub = sinon.stub(AzureWebAppStats.prototype, 'getFunctionStats').callsFake(
+                async function fakeFn(functionName, _timestamp) {
+                    if (functionName === 'Master')
+                        return { Master: { invocations: 3, errors: 2 } };
+                    if (functionName === 'Collector')
+                        return { Collector: { invocations: 3, errors: 1 } };
+                    if (functionName === 'Updater') {
+                        return { Updater: { invocations: 4, errors: 2 } };
+                    }
+                    return { [functionName]: { invocations: 0, errors: 0 } };
                 }
             );
             
@@ -220,23 +158,17 @@ describe('App Stats tests', function() {
             };
             
             var stats = new AzureWebAppStats(DEFAULT_APP_FUNCTIONS);
-            stats.getAppStats('2017-12-22T14:31:39', function(err, appStats) {
-                msTableServiceStub.restore();
-                getInvocationQueryStub.restore();
-                assert.deepEqual(expectedStats, appStats);
-                done();
-            });
+            const appStats = await stats.getAppStats('2017-12-22T14:31:39');
+            getInvocationQueryStub.restore();
+            assert.deepEqual(expectedStats, appStats);
         });
         
-        it('checks getAppStats() errors', function(done) {
-            var msTableServiceStub = sinon.stub(azureStorage, 'createTableService').callsFake(
-                function fakeFn(account, key, host) {
-                    var mockObj = {
-                        queryEntities : function(table, query, token, callback) {
-                            return callback('Error: getaddrinfo ENOTFOUND test.table.core.windows.net test.table.core.windows.net:443');
-                        }
+        it('checks getAppStats() errors', async function() {
+            var getInvocationQueryStub = sinon.stub(AzureWebAppStats.prototype, 'getFunctionStats').callsFake(
+                async function fakeFn(functionName, _timestamp) {
+                    return {
+                        [functionName]: { error: 'Error: getaddrinfo ENOTFOUND test.table.core.windows.net test.table.core.windows.net:443' }
                     };
-                    return mockObj;
                 }
             );
             
@@ -249,37 +181,34 @@ describe('App Stats tests', function() {
             };
             
             var stats = new AzureWebAppStats(DEFAULT_APP_FUNCTIONS);
-            stats.getAppStats('2017-12-22T14:31:39', function(err, appStats) {
-                msTableServiceStub.restore();
-                assert.deepEqual(expectedStats, appStats);
-                done();
-            });
+            const appStats = await stats.getAppStats('2017-12-22T14:31:39');
+            getInvocationQueryStub.restore();
+            assert.deepEqual(expectedStats, appStats);
         });
     });
 
     describe('AzureAppInsightStats test', function () {
         beforeEach(function () {
         });
-        afterEach(function (done) {
-            fs.unlink(mock.AL_TOKEN_CACHE_FILENAME, function (err) {
-                done();
-            });
+        afterEach(async function () {
+            try {
+                await fs.promises.unlink(mock.AL_TOKEN_CACHE_FILENAME);
+            } catch (err) {
+                if (err.code !== 'ENOENT') throw err;
+            }
             nock.cleanAll();
         });
 
-        it('checks getAppStats() with no Functions', function (done) {
+        it('checks getAppStats() with no Functions', async function () {
             var expectedStats = {
                 statistics: []
             };
             var stats = new AzureAppInsightStats({},[],mockCredentials,process.env.APP_SUBSCRIPTION_ID,process.env.APP_RESOURCE_GROUP);
-            stats.getAppStats('2022-12-22T14:31:39', function (err, appStats) {
-              
-                assert.deepEqual(expectedStats, appStats);
-                done();
-            });
+            const appStats = await stats.getAppStats('2022-12-22T14:31:39');
+            assert.deepEqual(expectedStats, appStats);
         });
 
-        it('checks getAppStats() with empty or zero stats', function (done) {
+        it('checks getAppStats() with empty or zero stats', async function () {
             var expectedStats = {
                 statistics: [
                     { Master: { invocations: 0, errors: 0 } },
@@ -288,23 +217,21 @@ describe('App Stats tests', function() {
                 ]
             };
             var stats = new AzureAppInsightStats({},DEFAULT_APP_FUNCTIONS, mockCredentials, process.env.APP_SUBSCRIPTION_ID, process.env.APP_RESOURCE_GROUP);
-            stats.getAppStats('2022-12-22T14:31:39', function (err, appStats) {
-                assert.deepEqual(expectedStats, appStats);
-                done();
-            });
+            const appStats = await stats.getAppStats('2022-12-22T14:31:39');
+            assert.deepEqual(expectedStats, appStats);
         });
 
-        it('checks getAppStats() and gets stats from application insights', function (done) {
+        it('checks getAppStats() and gets stats from application insights', async function () {
             var getInvocationQueryStub = sinon.stub(AzureAppInsightStats.prototype, 'getFunctionStats').callsFake(
-                function fakeFn(functionName, timestamp, callback) {
+                async function fakeFn(functionName, _timestamp) {
                     if (functionName === 'Master')
-                        return callback(null, mock.APPINSIGHTS_MASTER_INVOCATION_LOGS);
+                        return mock.APPINSIGHTS_MASTER_INVOCATION_LOGS;
                     if (functionName === 'Collector')
-                        return callback(null, mock.APPINSIGHTS_COLLECTOR_INVOCATION_LOGS);
+                        return mock.APPINSIGHTS_COLLECTOR_INVOCATION_LOGS;
                     if (functionName === 'Updater') {
-                        return callback(null, mock.APPINSIGHTS_UPDATER_INVOCATION_LOGS);
+                        return mock.APPINSIGHTS_UPDATER_INVOCATION_LOGS;
                     }
-                    return callback(null, []);
+                    return [];
                 }
             );
             var expectedStats = {
@@ -315,26 +242,24 @@ describe('App Stats tests', function() {
                 ]
             };
             var stats = new AzureAppInsightStats({},DEFAULT_APP_FUNCTIONS, mockCredentials, process.env.APP_SUBSCRIPTION_ID, process.env.APP_RESOURCE_GROUP);
-            stats.getAppStats('2022-12-22T14:31:39', function (err, appStats) {
-                getInvocationQueryStub.restore();
-                assert.deepEqual(expectedStats, appStats);
-                done();
-            });
+            const appStats = await stats.getAppStats('2022-12-22T14:31:39');
+            getInvocationQueryStub.restore();
+            assert.deepEqual(expectedStats, appStats);
         });
 
-        it('checks getAppStats() and gets stats from application insights getAppInsightsFunctionStats', function (done) {
+        it('checks getAppStats() and gets stats from application insights getAppInsightsFunctionStats', async function () {
             process.env.APPINSIGHTS_INSTRUMENTATIONKEY = 'test-key';
             var getInvocationQueryStub = sinon.stub(AzureAppInsightStats.prototype, 'getAppInsightsFunctionStats').callsFake(
-                function fakeFn(functionNames, timestamp, callback) {
+                async function fakeFn(functionNames, _timestamp) {
                     if (functionNames[0] === 'Master' || functionNames[1] === 'Collector' || functionNames[2] === 'Updater') {
                         let statistics = [
                             mock.APPINSIGHTS_MASTER_INVOCATION_LOGS,
                             mock.APPINSIGHTS_COLLECTOR_INVOCATION_LOGS,
                             mock.APPINSIGHTS_UPDATER_INVOCATION_LOGS
                         ];
-                        return callback(null, { statistics: statistics });
+                        return { statistics: statistics };
                     }
-                    return callback(null, []);
+                    return [];
                 }
             );
             var expectedStats = {
@@ -345,352 +270,261 @@ describe('App Stats tests', function() {
                 ]
             };
             var stats = new AzureAppInsightStats({},DEFAULT_APP_FUNCTIONS, mockCredentials, process.env.APP_SUBSCRIPTION_ID, process.env.APP_RESOURCE_GROUP);
-            stats.getAppStats('2022-12-22T14:31:39', function (err, appStats) {
-                getInvocationQueryStub.restore();
-                assert.deepEqual(expectedStats, appStats);
-                done();
-            });
+            const appStats = await stats.getAppStats('2022-12-22T14:31:39');
+            getInvocationQueryStub.restore();
+            assert.deepEqual(expectedStats, appStats);
         });
 
-        it('checks getAppStats() return values from Insights API to test Master stats parsing', function (done) {
+        it('checks getAppStats() return values from Insights API to test Master stats parsing', async function () {
             var query = mock.setKustoQuery(['Master']);
-            var insightsClient = new ApplicationInsightsDataClient(mockCredentials, { subscriptionId: process.env.APP_SUBSCRIPTION_ID });
+            var insightsClient = new ApplicationInsightsQueryClient(mockCredentials, { subscriptionId: process.env.APP_SUBSCRIPTION_ID });
             var appId = 'c5b420d7-23f3-4664-802d-c00c4c5611eb';
             var mockInsightsClient = sinon.stub(insightsClient.query, 'execute');
             mockInsightsClient.withArgs(appId, query).resolves(mock.UNPARSED_APPINSIGHTS_MASTER_INVOCATION_LOGS);
 
-            insightsClient.query.execute(appId, query).then(function (result) {
+            try {
+                const result = await insightsClient.query.execute(appId, query);
                 let dataObj = { 'Master': { invocations: 0, errors: 0 } };
-                try {
-                    const data = JSON.parse(result.tables[0].rows[0]);
-                    if (data.length) {
-                        dataObj = { [data[0].operation_Name]: { invocations: data[0].invocations, errors: data[0].errors } };
-                    }
-                    mockInsightsClient.restore();
-                    assert.deepEqual(mock.APPINSIGHTS_MASTER_INVOCATION_LOGS, dataObj);
-                    done();
-                } catch (e) {
+                const data = JSON.parse(result.tables[0].rows[0]);
+                if (data.length) {
+                    dataObj = { [data[0].operation_Name]: { invocations: data[0].invocations, errors: data[0].errors } };
                 }
-            }).catch((error) => {
                 mockInsightsClient.restore();
-                done();
-            });
+                assert.deepEqual(mock.APPINSIGHTS_MASTER_INVOCATION_LOGS, dataObj);
+            } catch (e) {
+                mockInsightsClient.restore();
+                throw e;
+            }
         });
 
-        it('checks getAppStats() return values from Insights API to test Updater stats parsing', function (done) {
+        it('checks getAppStats() return values from Insights API to test Updater stats parsing', async function () {
             var query = mock.setKustoQuery(['Updater']);
-            var insightsClient = new ApplicationInsightsDataClient(mockCredentials, { subscriptionId: process.env.APP_SUBSCRIPTION_ID });
+            var insightsClient = new ApplicationInsightsQueryClient(mockCredentials, { subscriptionId: process.env.APP_SUBSCRIPTION_ID });
             var appId = 'c5b420d7-23f3-4664-802d-c00c4c5611eb';
             var mockInsightsClient = sinon.stub(insightsClient.query, 'execute');
             mockInsightsClient.withArgs(appId, query).resolves(mock.UNPARSED_APPINSIGHTS_UPDATER_INVOCATION_LOGS);
 
-            insightsClient.query.execute(appId, query).then(function (result) {
+            try {
+                const result = await insightsClient.query.execute(appId, query);
                 let dataObj = { 'Updater': { invocations: 0, errors: 0 } };
-                try {
-                    const data = JSON.parse(result.tables[0].rows[0]);
-                    if (data.length) {
-                        dataObj = { [data[0].operation_Name]: { invocations: data[0].invocations, errors: data[0].errors } };
-                    }
-                    mockInsightsClient.restore();
-                    assert.deepEqual(mock.APPINSIGHTS_UPDATER_INVOCATION_LOGS, dataObj);
-                    done();
-                } catch (e) {
+                const data = JSON.parse(result.tables[0].rows[0]);
+                if (data.length) {
+                    dataObj = { [data[0].operation_Name]: { invocations: data[0].invocations, errors: data[0].errors } };
                 }
-            }).catch((error) => {
                 mockInsightsClient.restore();
-                done();
-            });
+                assert.deepEqual(mock.APPINSIGHTS_UPDATER_INVOCATION_LOGS, dataObj);
+            } catch (e) {
+                mockInsightsClient.restore();
+                throw e;
+            }
         });
 
-        it(`checks getAppStats() return values from Insights API to test ['Master','Collector','Updater'] stats parsing`, function (done) {
+        it(`checks getAppStats() return values from Insights API to test ['Master','Collector','Updater'] stats parsing`, async function () {
             var query = mock.setKustoQuery(['Collector']);
-            var insightsClient = new ApplicationInsightsDataClient(mockCredentials, { subscriptionId: process.env.APP_SUBSCRIPTION_ID });
+            var insightsClient = new ApplicationInsightsQueryClient(mockCredentials, { subscriptionId: process.env.APP_SUBSCRIPTION_ID });
             var appId = 'c5b420d7-23f3-4664-802d-c00c4c5611eb';
             var mockInsightsClient = sinon.stub(insightsClient.query, 'execute');
             mockInsightsClient.withArgs(appId, query).resolves(mock.UNPARSED_APPINSIGHTS_ALL_FUNCTIONS_INVOCATION_LOGS);
-            insightsClient.query.execute(appId, query).then(function (result) {
+            
+            try {
+                const result = await insightsClient.query.execute(appId, query);
                 let mapResult = [];
-                try {
-                    const data = JSON.parse(result.tables[0].rows[0]);
-                    if (data.length) {
-                        mapResult = data.map((item) => {
-                            return { [item.operation_Name]: { invocations: item.invocations, errors: item.errors } };
-                        });
-                        console.log(mapResult);
-                    }
-                    mockInsightsClient.restore();
-                    assert.deepEqual(mock.PARSED_APPINSIGHTS_ALL_FUNCTIONS_INVOCATION_LOGS, mapResult);
-                    done();
-                } catch (e) {
+                const data = JSON.parse(result.tables[0].rows[0]);
+                if (data.length) {
+                    mapResult = data.map((item) => {
+                        return { [item.operation_Name]: { invocations: item.invocations, errors: item.errors } };
+                    });
                 }
-            }).catch((error) => {
                 mockInsightsClient.restore();
-                done();
-            });
+                assert.deepEqual(mock.PARSED_APPINSIGHTS_ALL_FUNCTIONS_INVOCATION_LOGS, mapResult);
+            } catch (e) {
+                mockInsightsClient.restore();
+                throw e;
+            }
         });
 
-        it('checks getAppStats() return values from Insights API to test Collector stats parsing', function (done) {
+        it('checks getAppStats() return values from Insights API to test Collector stats parsing', async function () {
             var query = mock.setKustoQuery(['Collector']);
-            var insightsClient = new ApplicationInsightsDataClient(mockCredentials, { subscriptionId: process.env.APP_SUBSCRIPTION_ID });
+            var insightsClient = new ApplicationInsightsQueryClient(mockCredentials, { subscriptionId: process.env.APP_SUBSCRIPTION_ID });
             var appId = 'c5b420d7-23f3-4664-802d-c00c4c5611eb';
             var mockInsightsClient = sinon.stub(insightsClient.query, 'execute');
             mockInsightsClient.withArgs(appId, query).resolves(mock.UNPARSED_APPINSIGHTS_COLLECTOR_INVOCATION_LOGS);
-            insightsClient.query.execute(appId, query).then(function (result) {
+            
+            try {
+                const result = await insightsClient.query.execute(appId, query);
                 let dataObj = { 'Collector': { invocations: 0, errors: 0 } };
-                try {
-                    const data = JSON.parse(result.tables[0].rows[0]);
-                    if (data.length) {
-                        dataObj = { [data[0].operation_Name]: { invocations: data[0].invocations, errors: data[0].errors } };
-                    }
-                    mockInsightsClient.restore();
-                    assert.deepEqual(mock.APPINSIGHTS_COLLECTOR_INVOCATION_LOGS, dataObj);
-                    done();
-                } catch (e) {
+                const data = JSON.parse(result.tables[0].rows[0]);
+                if (data.length) {
+                    dataObj = { [data[0].operation_Name]: { invocations: data[0].invocations, errors: data[0].errors } };
                 }
-            }).catch((error) => {
                 mockInsightsClient.restore();
-                done();
-            });
+                assert.deepEqual(mock.APPINSIGHTS_COLLECTOR_INVOCATION_LOGS, dataObj);
+            } catch (e) {
+                mockInsightsClient.restore();
+                throw e;
+            }
         });
     });
     
     describe('AzureCollectionStats test', function() {
         beforeEach(function() {
-            process.env.AzureWebJobsStorage = 'DefaultEndpointsProtocol=https;AccountName=testappo365;AccountKey=S0meKey+';
+            process.env.AzureWebJobsStorage = 'DefaultEndpointsProtocol=https;AccountName=testappo365;AccountKey=S0meKey+;EndpointSuffix=core.windows.net';
         });
-        afterEach(function() {
-            nock.cleanAll();
-        });
-        
-        it('checks putLogStats ok case', function(done) {
-            // Collection stats Azure mocks
-            nock('https://testappo365.queue.core.windows.net:443', {'encodedQueryParams':true})
-            .head('/alertlogic-stats')
-            .query({'comp':'metadata'})
-            .times(100)
-            .reply(200, '', mock.statsQueueMetadataHeaders());
-            
-            nock('https://testappo365.queue.core.windows.net:443', {'encodedQueryParams':true})
-            .post('/alertlogic-stats/messages' )
-            .query(true)
-            .times(100)
-            .reply(201, '');
-            
-            var collectionStats = new AzureCollectionStats(mock.DEFAULT_FUNCTION_CONTEXT);
-            
-            collectionStats.putLogStats(10, 15, function(err) {
-                assert.equal(err, null);
-                done();
+
+        function statsMessages() {
+            return [
+                { messageText: JSON.stringify({ type: 1, bytes: 10, events: 15 }), messageId: '1', popReceipt: 'p1' },
+                { messageText: JSON.stringify({ type: 1, bytes: 10, events: 15 }), messageId: '2', popReceipt: 'p2' }
+            ];
+        }
+
+        it('checks putLogStats ok case', async function() {
+            const queueClient = {
+                create: async () => {},
+                sendMessage: async () => {}
+            };
+            const fromConnectionStringStub = sinon.stub(storageQueue.QueueServiceClient, 'fromConnectionString').returns({
+                getQueueClient: () => queueClient
             });
-            
+
+            const collectionStats = new AzureCollectionStats(mock.DEFAULT_FUNCTION_CONTEXT);
+            await collectionStats.putLogStats(10, 15);
+            fromConnectionStringStub.restore();
         });
-        
-        it('checks putLogStats error case', function(done) {
-            // Collection stats Azure mocks
-            nock('https://testappo365.queue.core.windows.net:443', {'encodedQueryParams':true})
-            .head('/alertlogic-stats')
-            .query({'comp':'metadata'})
-            .times(100)
-            .reply(200, '', mock.statsQueueMetadataHeaders());
-            
-            nock('https://testappo365.queue.core.windows.net:443', {'encodedQueryParams':true})
-            .post('/alertlogic-stats/messages' )
-            .query(true)
-            .times(100)
-            .reply(403, mock.statsQueue403, mock.statsQueue403Headers);
-            
-            var collectionStats = new AzureCollectionStats(mock.DEFAULT_FUNCTION_CONTEXT);
-            
-            collectionStats.putLogStats(10, 20, function(err) {
+
+        it('checks putLogStats error case', async function() {
+            const queueClient = {
+                create: async () => {},
+                sendMessage: async () => {
+                    const err = new Error('forbidden');
+                    err.statusCode = 403;
+                    throw err;
+                }
+            };
+            const fromConnectionStringStub = sinon.stub(storageQueue.QueueServiceClient, 'fromConnectionString').returns({
+                getQueueClient: () => queueClient
+            });
+
+            const collectionStats = new AzureCollectionStats(mock.DEFAULT_FUNCTION_CONTEXT);
+            try {
+                await collectionStats.putLogStats(10, 20);
+                assert.fail('Expected error to be thrown');
+            } catch (err) {
                 assert.equal(err.statusCode, 403);
-                done();
-            });
-        });
-        
-        it('checks getStats queue not found', function(done) {
-            // Collection stats Azure mocks
-            nock('https://testappo365.queue.core.windows.net:443', {'encodedQueryParams':true})
-            .get('/alertlogic-stats')
-            .query({'comp':'metadata'})
-            .times(100)
-            .reply(404, mock.statsQueue404, mock.statsQueue404Headers);
-            
-            var collectionStats = new AzureCollectionStats(mock.DEFAULT_FUNCTION_CONTEXT);
-            
-            collectionStats.getStats(function(err, result) {
-                const expected = { log: { bytes: 0, events: 0 } };
-                assert.equal(err, null);
-                assert.deepEqual(result, expected);
-                done();
-            });
-            
+            }
+            fromConnectionStringStub.restore();
         });
 
-        it('checks getStats ok case', function(done) {
-            // Collection stats Azure mocks
-            nock('https://testappo365.queue.core.windows.net:443', {'encodedQueryParams':true})
-            .get('/alertlogic-stats')
-            .query({'comp':'metadata'})
-            .times(100)
-            .reply(200, '', mock.statsQueueMetadataHeaders());
-
-            nock('https://testappo365.queue.core.windows.net:443', {"encodedQueryParams":true})
-            .get('/alertlogic-stats/messages')
-            .query(true)
-            .times(100)
-            .reply(200, mock.statsMessages);
-
-            nock('https://testappo365.queue.core.windows.net:443', {"encodedQueryParams":true})
-            .delete(/alertlogic-stats\/messages.*/)
-            .query(true)
-            .times(100)
-            .reply(204,'');
-
-            process.env.AzureWebJobsStorage = 'DefaultEndpointsProtocol=https;AccountName=testappo365;AccountKey=S0meKey+';
-            var collectionStats = new AzureCollectionStats(mock.DEFAULT_FUNCTION_CONTEXT);
-            
-            collectionStats.getStats(function(err, result) {
-                const expected = { log: { bytes: 20, events: 30 } };
-                assert.equal(err, null);
-                assert.deepEqual(result, expected);
-                done();
+        it('checks getStats queue not found', async function() {
+            const queueClient = {
+                getProperties: async () => {
+                    const err = new Error('not found');
+                    err.code = 'QueueNotFound';
+                    throw err;
+                }
+            };
+            const fromConnectionStringStub = sinon.stub(storageQueue.QueueServiceClient, 'fromConnectionString').returns({
+                getQueueClient: () => queueClient
             });
+
+            const collectionStats = new AzureCollectionStats(mock.DEFAULT_FUNCTION_CONTEXT);
+            const result = await collectionStats.getStats();
+            assert.deepEqual(result, { log: { bytes: 0, events: 0 } });
+            fromConnectionStringStub.restore();
         });
-        
-        it('checks getStats ok 2 batches', function(done) {
-                // Collection stats Azure mocks
-               nock('https://testappo365.queue.core.windows.net:443', {'encodedQueryParams':true})
-               .get('/alertlogic-stats')
-               .query({'comp':'metadata'})
-               .times(100)
-               .reply(200, '', mock.statsQueueMetadataHeaders(64));
 
-               nock('https://testappo365.queue.core.windows.net:443', {"encodedQueryParams":true})
-               .get('/alertlogic-stats/messages')
-               .query(true)
-               .times(100)
-               .reply(200, mock.statsMessages);
+        it('checks getStats ok case', async function() {
+            const queueClient = {
+                getProperties: async () => ({ approximateMessagesCount: 2 }),
+                receiveMessages: async () => ({ receivedMessageItems: statsMessages() }),
+                deleteMessage: async () => {}
+            };
+            const fromConnectionStringStub = sinon.stub(storageQueue.QueueServiceClient, 'fromConnectionString').returns({
+                getQueueClient: () => queueClient
+            });
 
-               nock('https://testappo365.queue.core.windows.net:443', {"encodedQueryParams":true})
-               .delete(/alertlogic-stats\/messages.*/)
-               .query(true)
-               .times(100)
-               .reply(204,'');
+            const collectionStats = new AzureCollectionStats(mock.DEFAULT_FUNCTION_CONTEXT);
+            const result = await collectionStats.getStats();
+            assert.deepEqual(result, { log: { bytes: 20, events: 30 } });
+            fromConnectionStringStub.restore();
+        });
 
-               process.env.AzureWebJobsStorage = 'DefaultEndpointsProtocol=https;AccountName=testappo365;AccountKey=S0meKey+';
-               var collectionStats = new AzureCollectionStats(mock.DEFAULT_FUNCTION_CONTEXT);
-               
-               collectionStats.getStats(function(err, result) {
-                   const expected = { log: { bytes: 40, events: 60 } };
-                   assert.equal(err, null);
-                   assert.deepEqual(result, expected);
-                   done();
-               });
-           });
-        
-        it('checks getStats ok 3 batches', function(done) {
-                // Collection stats Azure mocks
-               nock('https://testappo365.queue.core.windows.net:443', {'encodedQueryParams':true})
-               .get('/alertlogic-stats')
-               .query({'comp':'metadata'})
-               .times(100)
-               .reply(200, '', mock.statsQueueMetadataHeaders(65));
+        it('checks getStats ok 2 batches', async function() {
+            const queueClient = {
+                getProperties: async () => ({ approximateMessagesCount: 64 }),
+                receiveMessages: async () => ({ receivedMessageItems: statsMessages() }),
+                deleteMessage: async () => {}
+            };
+            const fromConnectionStringStub = sinon.stub(storageQueue.QueueServiceClient, 'fromConnectionString').returns({
+                getQueueClient: () => queueClient
+            });
 
-               nock('https://testappo365.queue.core.windows.net:443', {"encodedQueryParams":true})
-               .get('/alertlogic-stats/messages')
-               .query(true)
-               .times(100)
-               .reply(200, mock.statsMessages);
+            const collectionStats = new AzureCollectionStats(mock.DEFAULT_FUNCTION_CONTEXT);
+            const result = await collectionStats.getStats();
+            assert.deepEqual(result, { log: { bytes: 40, events: 60 } });
+            fromConnectionStringStub.restore();
+        });
 
-               nock('https://testappo365.queue.core.windows.net:443', {"encodedQueryParams":true})
-               .delete(/alertlogic-stats\/messages.*/)
-               .query(true)
-               .times(100)
-               .reply(204,'');
+        it('checks getStats ok 3 batches', async function() {
+            const queueClient = {
+                getProperties: async () => ({ approximateMessagesCount: 65 }),
+                receiveMessages: async () => ({ receivedMessageItems: statsMessages() }),
+                deleteMessage: async () => {}
+            };
+            const fromConnectionStringStub = sinon.stub(storageQueue.QueueServiceClient, 'fromConnectionString').returns({
+                getQueueClient: () => queueClient
+            });
 
-               process.env.AzureWebJobsStorage = 'DefaultEndpointsProtocol=https;AccountName=testappo365;AccountKey=S0meKey+';
-               var collectionStats = new AzureCollectionStats(mock.DEFAULT_FUNCTION_CONTEXT);
-               
-               collectionStats.getStats(function(err, result) {
-                   const expected = { log: { bytes: 60, events: 90 } };
-                   assert.equal(err, null);
-                   assert.deepEqual(result, expected);
-                   done();
-               });
-           });
-        
-        it('getStats inaccurate stats. Error in get message batch.', function(done) {
-                // Collection stats Azure mocks
-               nock('https://testappo365.queue.core.windows.net:443', {'encodedQueryParams':true})
-               .get('/alertlogic-stats')
-               .query({'comp':'metadata'})
-               .times(100)
-               .reply(200, '', mock.statsQueueMetadataHeaders(65));
+            const collectionStats = new AzureCollectionStats(mock.DEFAULT_FUNCTION_CONTEXT);
+            const result = await collectionStats.getStats();
+            assert.deepEqual(result, { log: { bytes: 60, events: 90 } });
+            fromConnectionStringStub.restore();
+        });
 
-               nock('https://testappo365.queue.core.windows.net:443', {"encodedQueryParams":true})
-               .get('/alertlogic-stats/messages')
-               .query(true)
-               .times(2)
-               .reply(200, mock.statsMessages)
-               .get('/alertlogic-stats/messages')
-               .query(true)
-               .times(1)
-               .reply(403, mock.statsQueue403, mock.statsQueue403Headers);
+        it('getStats inaccurate stats. Error in get message batch.', async function() {
+            let receiveCount = 0;
+            const queueClient = {
+                getProperties: async () => ({ approximateMessagesCount: 65 }),
+                receiveMessages: async () => {
+                    receiveCount += 1;
+                    if (receiveCount === 3) {
+                        throw new Error('batch failed');
+                    }
+                    return { receivedMessageItems: statsMessages() };
+                },
+                deleteMessage: async () => {}
+            };
+            const fromConnectionStringStub = sinon.stub(storageQueue.QueueServiceClient, 'fromConnectionString').returns({
+                getQueueClient: () => queueClient
+            });
 
-               nock('https://testappo365.queue.core.windows.net:443', {"encodedQueryParams":true})
-               .delete(/alertlogic-stats\/messages.*/)
-               .query(true)
-               .times(100)
-               .reply(204,'');
+            const collectionStats = new AzureCollectionStats(mock.DEFAULT_FUNCTION_CONTEXT);
+            const result = await collectionStats.getStats();
+            assert.deepEqual(result, { log: { bytes: 40, events: 60 } });
+            fromConnectionStringStub.restore();
+        });
 
-               process.env.AzureWebJobsStorage = 'DefaultEndpointsProtocol=https;AccountName=testappo365;AccountKey=S0meKey+';
-               var collectionStats = new AzureCollectionStats(mock.DEFAULT_FUNCTION_CONTEXT);
-               
-               collectionStats.getStats(function(err, result) {
-                   const expected = { log: { bytes: 40, events: 60 } };
-                   assert.notEqual(err, null);
-                   assert.deepEqual(result, expected);
-                   done();
-               });
-           });
+        it('getStats accurate stats with an error in delete message.', async function() {
+            let deleteCount = 0;
+            const queueClient = {
+                getProperties: async () => ({ approximateMessagesCount: 65 }),
+                receiveMessages: async () => ({ receivedMessageItems: statsMessages() }),
+                deleteMessage: async () => {
+                    deleteCount += 1;
+                    if (deleteCount > 4) {
+                        throw new Error('delete failed');
+                    }
+                }
+            };
+            const fromConnectionStringStub = sinon.stub(storageQueue.QueueServiceClient, 'fromConnectionString').returns({
+                getQueueClient: () => queueClient
+            });
 
-        it('getStats accurate stats with an error in delete message.', function(done) {
-                // Collection stats Azure mocks
-               nock('https://testappo365.queue.core.windows.net:443', {'encodedQueryParams':true})
-               .get('/alertlogic-stats')
-               .query({'comp':'metadata'})
-               .times(100)
-               .reply(200, '', mock.statsQueueMetadataHeaders(65));
-
-               nock('https://testappo365.queue.core.windows.net:443', {"encodedQueryParams":true})
-               .get('/alertlogic-stats/messages')
-               .query(true)
-               .times(3)
-               .reply(200, mock.statsMessages);
-               
-               nock('https://testappo365.queue.core.windows.net:443', {"encodedQueryParams":true})
-               .delete(/alertlogic-stats\/messages.*/)
-               .query(true)
-               // First 4 messages are removed successfully
-               .times(4)
-               .reply(204,'')
-               .delete(/alertlogic-stats\/messages.*/)
-               .query(true)
-               // The last two messages from the last message batch get delete error
-               .times(2)
-               .reply(403, mock.statsQueue403, mock.statsQueue403Headers);
-
-               process.env.AzureWebJobsStorage = 'DefaultEndpointsProtocol=https;AccountName=testappo365;AccountKey=S0meKey+';
-               var collectionStats = new AzureCollectionStats(mock.DEFAULT_FUNCTION_CONTEXT);
-               
-               collectionStats.getStats(function(err, result) {
-                   const expected = { log: { bytes: 40, events: 60 } };
-                   assert.equal(err, null);
-                   assert.deepEqual(result, expected);
-                   done();
-               });
-           });
-
+            const collectionStats = new AzureCollectionStats(mock.DEFAULT_FUNCTION_CONTEXT);
+            const result = await collectionStats.getStats();
+            assert.deepEqual(result, { log: { bytes: 40, events: 60 } });
+            fromConnectionStringStub.restore();
+        });
     });
 
     describe('CollectionStatRecord test', function() {
@@ -699,7 +533,7 @@ describe('App Stats tests', function() {
         afterEach(function() {
         });
         
-        it('checks stats aggregation', function(done) {
+        it('checks stats aggregation', function() {
             var stats1 = new CollectionStatRecord();
             var stats2 = new CollectionStatRecord();
             
@@ -730,8 +564,6 @@ describe('App Stats tests', function() {
             
             stats2.reset();
             assert.deepEqual(stats2, { log: { bytes: 0, events: 0 } });
-            
-            done();
         });
     });
 });

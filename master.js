@@ -9,9 +9,7 @@
  */
 'use strict';
 
-const async = require('async');
-
-const {MSIAppServiceTokenCredentials, ApplicationTokenCredentials} = require('@azure/ms-rest-nodeauth');
+const { ManagedIdentityCredential, ClientSecretCredential } = require('@azure/identity');
 const {WebSiteManagementClient} = require('@azure/arm-appservice');
 
 const alcollector = require('@alertlogic/al-collector-js');
@@ -47,9 +45,9 @@ const DEFAULT_APP_FUNCTIONS = ['Master', 'Collector', 'Updater'];
  * @param {Object} azureContext - context of Azure function.
  * @param {String} collectorType - collector type (ehub, o365, etc).
  * @param {String} version - version of collector.
- * @param {Array.<Function>} healthCheckFuns - (optional) list of custom health check functions (can be just empty, so only common are applied). Default is [].
- * In case of health-check succeeds a custom health check function should call callback(null), otherwise return an error object constructed with a help of.
- * errorStatusFmt() function. For example, master.errorStatusFmt('ALAZU00001', 'Some error description');
+ * @param {Array.<Function>} healthCheckFuns - (optional) list of custom async health check functions (can be just empty, so only common are applied). Default is [].
+ * In case of health-check succeeds a custom health check function should return null, otherwise throw an error object constructed with a help of
+ * errorStatusFmt() function. For example, throw master.errorStatusFmt('ALAZU00001', 'Some error description');
  * 
  * @param {Array.<Function>} collectionStatsFun - (optional,deprecated) a function which is called during checking to get collection stats. The result of the function will be assigned to 'collection_stats' property of a checkin body. Default is null.
  * @
@@ -83,8 +81,8 @@ class AlAzureMaster {
         this._version = version;
         this._customHealthChecks = healthCheckFuns ? healthCheckFuns : [];
         this._collectionStatsFun = collectionStatsFun && typeof collectionStatsFun === 'function' ? collectionStatsFun :
-            function(m, ts, callback) {
-                return callback();
+            async function() {
+                return;
         };
         
         // Init Alert Logic optional configuration parameters
@@ -146,15 +144,11 @@ class AlAzureMaster {
     getTokenCredentials(resource) {
         let credentials = {};
         if (process.env.MSI_ENDPOINT && process.env.MSI_SECRET) {
-            const options = {
-                msiEndpoint: process.env.MSI_ENDPOINT,
-                msiSecret: process.env.MSI_SECRET
-
-            };
-            if (resource) options.resource = resource;
-            credentials = new MSIAppServiceTokenCredentials(options);
+            // Use Managed Identity when running in Azure Functions
+            credentials = new ManagedIdentityCredential();
         } else {
-            credentials = new ApplicationTokenCredentials(this._clientId, this._domain, this._clientSecret, resource ? resource : undefined);
+            // Use Client Secret for service principal authentication
+            credentials = new ClientSecretCredential(this._domain, this._clientId, this._clientSecret);
         }
         return credentials;
     }
@@ -180,47 +174,32 @@ class AlAzureMaster {
      *  @function updateAlEndpoints - retrieves Alert Logic service endpoints.
      *  
      *  @param {Boolean} force - force Alert Logic service endpoints update overwriting existing ones stored in application settings
-     *  @param {Function} callback
      *  
-     *  @return {Function} callback - (error)
+     *  @return {Promise<void>}
      */
-    updateAlEndpoints(force, callback) {
+    async updateAlEndpoints(force) {
         var master = this;
         if (!force && process.env.APP_INGEST_ENDPOINT && process.env.APP_AZCOLLECT_ENDPOINT) {
             master._azureContext.log.verbose('Reuse Ingest endpoint', process.env.APP_INGEST_ENDPOINT);
             master._azureContext.log.verbose('Reuse Azcollect endpoint', process.env.APP_AZCOLLECT_ENDPOINT);
-            return callback(null);
+            return;
         } else {
             master._azureContext.log.verbose('Updating endpoints for', SERVICE_ENDPOINTS);
-            async.map(SERVICE_ENDPOINTS, 
-                function(service, callback){
-                    master._endpointsc.getEndpoint(service, master._alDataResidency)
-                        .then(resp => {
-                            return callback(null, resp);
-                        })
-                        .catch(function(exception) {
-                            return callback(`Endpoints update failure ${exception}`);
-                        });
-                },
-                function (mapErr, mapsResult) {
-                    if (mapErr) {
-                        return callback(mapErr);
-                    } else {
-                        master._azureContext.log.verbose('New endpoints:', mapsResult);
-                        var endpoints = {
-                            APP_AZCOLLECT_ENDPOINT : mapsResult[0].azcollect,
-                            APP_INGEST_ENDPOINT : mapsResult[1].ingest
-                        };
-                        m_util.updateAppSettings(endpoints, master.azureWebsiteClientObject,function(settingsError) {
-                            if (settingsError) {
-                                return callback(settingsError);
-                            } else {
-                                master.resetAzcollectc(endpoints.APP_AZCOLLECT_ENDPOINT);
-                                return callback(null);
-                            }
-                        });
-                    }
-            });
+            let mapsResult;
+            try {
+                mapsResult = await Promise.all(SERVICE_ENDPOINTS.map(function(service) {
+                    return master._endpointsc.getEndpoint(service, master._alDataResidency);
+                }));
+            } catch (exception) {
+                throw new Error(`Endpoints update failure ${exception}`);
+            }
+            master._azureContext.log.verbose('New endpoints:', mapsResult);
+            var endpoints = {
+                APP_AZCOLLECT_ENDPOINT : mapsResult[0].azcollect,
+                APP_INGEST_ENDPOINT : mapsResult[1].ingest
+            };
+            await m_util.updateAppSettings(endpoints, master.azureWebsiteClientObject);
+            master.resetAzcollectc(endpoints.APP_AZCOLLECT_ENDPOINT);
         }
     }
     
@@ -232,7 +211,7 @@ class AlAzureMaster {
             app_tenant_id: this._domain,
             subscription_id: this._subscriptionId,
             app_filter_json: this._appFilterJson,
-            app_filter_regex: this._appFilterJson
+            app_filter_regex: this._appFilterRegex
         };
     }
     
@@ -258,259 +237,190 @@ class AlAzureMaster {
        };
    }
     
-    _getAppStatus(callback) {
-        var master = this;
-        this._azureWebsiteClient.webApps.get(
+    async _getAppStatus() {
+        var status = await this._azureWebsiteClient.webApps.get(
             this._resourceGroup,
-            this._webAppName,
-            function(err, status) {
-            if (err) {
-                return callback(err);
-            } else {
-                const expectedProps = {
-                    availabilityState: 'Normal',
-                    state: 'Running',
-                    usageState: 'Normal',
-                    enabled: true
-                };
-                
-                var propDiff = m_util.verifyObjProps(status, expectedProps);
-                
-                if (!propDiff) {
-                    return callback(null);
-                } else {
-                    return callback(master.errorStatusFmt(
-                        'ALAZU00001',
-                        `Azure Web Application status is not OK. ${JSON.stringify(propDiff)}`
-                    ));
+            this._webAppName
+        );
+        const expectedProps = {
+            availabilityState: 'Normal',
+            state: 'Running',
+            usageState: 'Normal',
+            enabled: true
+        };
+
+        var propDiff = m_util.verifyObjProps(status, expectedProps);
+
+        if (propDiff) {
+            throw this.errorStatusFmt(
+                'ALAZU00001',
+                `Azure Web Application status is not OK. ${JSON.stringify(propDiff)}`
+            );
+        }
+    }
+    
+    async getStats(timestamp) {
+        var master = this;
+
+        const withReflect = async function(fn) {
+            try {
+                return { value: await fn() };
+            } catch (error) {
+                return { error: error };
+            }
+        };
+
+        const results = await Promise.all([
+            withReflect(async function() {
+                return master._appStats.getAppStats(timestamp);
+            }),
+            withReflect(async function() {
+                const stats = await master._collectionStats.getStats();
+                if (stats && typeof stats === 'object') {
+                    return {
+                        collection_stats: stats
+                    };
                 }
-            }
-        });
-    }
-    
-    _getCustomHealthChecks() {
-        var master = this;
-        return master._customHealthChecks.map(function(check) {
-            return function(callback) {
-                check(master, callback)
-            }
-        });
-    }
-    
-    getStats(timestamp, callback) {
-        var master = this;
-        
-        async.parallel([
-            async.reflect(function(callback) {
-                return master._appStats.getAppStats(timestamp, callback);
+                return null;
             }),
-            async.reflect(function(callback) {
-                return master._collectionStats.getStats(function(err, stats) {
-                    var result;
-                    if (stats && typeof stats === 'object') {
-                        result = {
-                            collection_stats: stats
-                        };
-                    } else {
-                        result = null;
-                    }
-                    return callback(err, result);
-                });
-            }),
-            async.reflect(function(callback) {
+            withReflect(async function() {
                 if (process.env.APP_DL_CONTAINER_NAME) {
-                    return master._alAzureDlBlob.getDlBlobStats(callback);
-                } else {
-                    return callback(null, {});
+                    return master._alAzureDlBlob.getDlBlobStats();
                 }
+                return {};
             })
-        ],
-        function(err, results){
-            const statValues = results.reduce(function(acc, val){
-                if (val.error) {
-                    master._azureContext.log.warn('Statistics retrieval failed with', val.error);
-                    return acc;
-                } else {
-                    return Object.assign(acc, val.value);
-                }
-            }, {});
-            return callback(null, statValues);
-        });
+        ]);
+        const statValues = results.reduce(function(acc, val){
+            if (val.error) {
+                master._azureContext.log.warn('Statistics retrieval failed with', val.error);
+                return acc;
+            }
+            return Object.assign(acc, val.value);
+        }, {});
+        return statValues;
     }
     
-    getHealthStatus(callback) {
+    async getHealthStatus() {
         var master = this;
-        
-        async.parallel([
-            function(callback) {
-                master._getAppStatus(callback);
+
+        const runCustomCheck = async function(check) {
+            const result = await check(master);
+            if (result) {
+                throw result;
             }
-        ].concat(master._getCustomHealthChecks()),
-        function(errStatus) {
-            var status;
-            if (errStatus) {
-                if(typeof errStatus === 'string'){
-                    master._azureContext.log.warn('Health check failed with: ',  errStatus);
-                    status = master.errorStatusFmt('ALAZU000004', errStatus);
-                } else {
-                    if(errStatus.details){
-                        master._azureContext.log.warn('Health check failed with',  errStatus.details);
-                        status = errStatus;
-                    }else if(errStatus.message){
-                        master._azureContext.log.warn('Health check failed with error message',  errStatus.message);
-                        status = master.errorStatusFmt('ALAZU000005', errStatus.message);
-                    }else{
-                        status = master.errorStatusFmt('ALAZU000006', JSON.stringify(errStatus));
-                    }
-                }
-            } else {
-                status = {
-                    status: 'ok',
-                    details: []
-                };
+        };
+
+        try {
+            await Promise.all([
+                master._getAppStatus()
+            ].concat(master._customHealthChecks.map(runCustomCheck)));
+            return {
+                status: 'ok',
+                details: []
+            };
+        } catch (errStatus) {
+            if(typeof errStatus === 'string'){
+                master._azureContext.log.warn('Health check failed with: ',  errStatus);
+                return master.errorStatusFmt('ALAZU000004', errStatus);
             }
-            return callback(null, status);
-        });
+            if(errStatus && errStatus.details){
+                master._azureContext.log.warn('Health check failed with',  errStatus.details);
+                return errStatus;
+            }
+            if(errStatus && errStatus.message){
+                master._azureContext.log.warn('Health check failed with error message',  errStatus.message);
+                return master.errorStatusFmt('ALAZU000005', errStatus.message);
+            }
+            return master.errorStatusFmt('ALAZU000006', JSON.stringify(errStatus));
+        }
     }
 
     /**
      *  @function register - registers new collector in Alert Logic.
      *  
      *  @param {Object} registerOpts - optional registration parameters specific for a certain collector type.
-     *  @param {Function} callback
      *  
-     *  @return {Function} callback - (error, collectorHostId, collectorSourceId)
+     *  @return {Promise<Object>} { hostId, sourceId }
      */
-    register(registerOpts = {}, callback) {
+    async register(registerOpts = {}) {
         var master = this;
-        async.waterfall([
-            // Update Alert Logic service endpoints, if necessary
-            function(callback) {
-                return master.updateAlEndpoints(false, callback);
-            },
-            // Register a collector with Alert Logic backed, if necessary
-            function(callback) {
-                var hostId = master._hostId;
-                var sourceId = master._sourceId;
-                if (hostId && sourceId) {
-                    master._azureContext.log.verbose('Reuse collector IDs: ', hostId, sourceId);
-                    return callback(null, false, hostId, sourceId);
-                } else {
-                    master._azureContext.log.verbose('Registering the collector: ',
-                            master._webAppName,
-                            master._collectorType,
-                            master._version);
-                    
-                    var regBody = Object.assign(
-                            master.getConfigAttrs(),
-                            master.getAzureCreds(),
-                            registerOpts);
-                    master._azcollectc.register(regBody)
-                        .then(resp => {
-                            var newHostId = resp.source.host.id;
-                            var newSourceId = resp.source.id;
-                            return callback(null, true, newHostId, newSourceId);
-                        })
-                        .catch(err => {
-                            return callback(err);
-                        });
-                }
-            },
-            // Update Azure application settings with collector registration values if needed
-            function(updateSettings, hostId, sourceId, callback) {
-                if (updateSettings) {
-                    var newSettings = {
-                        COLLECTOR_HOST_ID: hostId,
-                        COLLECTOR_SOURCE_ID: sourceId
-                    };
-                    m_util.updateAppSettings(newSettings,
-                        master.azureWebsiteClientObject, 
-                        function(settingsError) {
-                            if (settingsError) {
-                                return callback(settingsError);
-                            } else {
-                                master._azureContext.log.verbose('New collector IDs: ', hostId, sourceId);
-                                master._hostId = hostId;
-                                master._sourceId = sourceId;
-                                return callback(null, hostId, sourceId);
-                            }
-                        });
-                } else {
-                    return callback(null, hostId, sourceId);
-                }
-            }
-        ], callback);
+        await master.updateAlEndpoints(false);
+        var hostId = master._hostId;
+        var sourceId = master._sourceId;
+        if (hostId && sourceId) {
+            master._azureContext.log.verbose('Reuse collector IDs: ', hostId, sourceId);
+            return { hostId: hostId, sourceId: sourceId };
+        }
+
+        master._azureContext.log.verbose('Registering the collector: ',
+                master._webAppName,
+                master._collectorType,
+                master._version);
+
+        var regBody = Object.assign(
+                master.getConfigAttrs(),
+                master.getAzureCreds(),
+                registerOpts);
+        var resp = await master._azcollectc.register(regBody);
+        var newHostId = resp.source.host.id;
+        var newSourceId = resp.source.id;
+
+        var newSettings = {
+            COLLECTOR_HOST_ID: newHostId,
+            COLLECTOR_SOURCE_ID: newSourceId
+        };
+        await m_util.updateAppSettings(newSettings, master.azureWebsiteClientObject);
+        master._azureContext.log.verbose('New collector IDs: ', newHostId, newSourceId);
+        master._hostId = newHostId;
+        master._sourceId = newSourceId;
+        return { hostId: newHostId, sourceId: newSourceId };
     }
     
     /**
      *  @function deregister - deregisters a collector from Alert Logic services.
      *  
      *  @param {Object} deregisterOpts - deregistration parameters specific for a certain collector type. Default is {}
-     *  @param {} callback
      *  
-     *  @return callback - (error)
+     *  @return {Promise<void>}
      */
-    deregister(deregisterOpts = {}, callback) {
+    async deregister(deregisterOpts = {}) {
         const deregBody = Object.assign(
             this.getConfigAttrs(),
             this.getCollectorIds(),
             deregisterOpts);
-        this._azcollectc.deregister(deregBody)
-            .then(resp => {
-                return callback(null, resp);
-            })
-            .catch(err => {
-                return callback(err);
-            });
+        return this._azcollectc.deregister(deregBody);
     }
     
     /**
      *  @function checkin - report a collector health check into Alert Logic services.
      *  
      *  @param {String} timestamp - for example, '2017-12-22T14:31:39'. Usually Master function timer trigger value is used.
-     *  @param callback
      *  
-     *  @return callback - (error)
+     *  @return {Promise<void>}
      */
-    checkin(timestamp, callback) {
+    async checkin(timestamp) {
         var master = this;
-        async.parallel([
-            function(callback) {
-                master.getHealthStatus(callback);
-            },
-            function(callback) {
-                master.getStats(timestamp, callback);
+        const checkinParts = await Promise.all([
+            master.getHealthStatus(),
+            master.getStats(timestamp)
+        ]);
+
+        const checkinBody = Object.assign(
+            master.getConfigAttrs(),
+            master.getCollectorIds(),
+            checkinParts[0],
+            checkinParts[1]);
+        const resp = await master._azcollectc.checkin(checkinBody);
+        if(resp && resp.force_update === true){
+            const updater = new AlAzureUpdater();
+            try {
+                await updater.syncWebApp();
+            } catch (syncError) {
+                throw new Error(`Forced update application sync failed: ${syncError}`);
             }
-        ],
-        function(err, checkinParts) {
-            if(err){
-                return callback(err);
-            }
-            const checkinBody = Object.assign(
-                master.getConfigAttrs(),
-                master.getCollectorIds(),
-                checkinParts[0],
-                checkinParts[1]);
-            master._azcollectc.checkin(checkinBody)
-                .then(resp => {
-                    if(resp && resp.force_update === true){
-                        const updater = new AlAzureUpdater();
-                        updater.syncWebApp(function(syncError){
-                            if(syncError){
-                                return callback(`Forced update application sync failed: ${syncError}`);
-                            } else {
-                                master._azureContext.log.info('Forced update application sync OK');
-                                return callback(null, resp);
-                            }
-                        });
-                    } else {
-                        return callback(null, resp);
-                    }
-                })
-                .catch(err => {
-                    return callback(err);
-                });
-        });
+            master._azureContext.log.info('Forced update application sync OK');
+        }
+        return resp;
     }
 };
 
