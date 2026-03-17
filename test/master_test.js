@@ -16,17 +16,17 @@ const alcollector = require('@alertlogic/al-collector-js');
 const AlAzureMaster = require('../master').AlAzureMaster;
 const AzureWebAppStats = require('../appstats').AzureWebAppStats;
 const AzureAppInsightStats = require('../appstats').AzureAppInsightStats;
+const AzureCollectionStats = require('../appstats').AzureCollectionStats;
 const CollectionStatRecord = require('../appstats').CollectionStatRecord;
+const AlAzureDlBlob = require('../dlblob').AlAzureDlBlob;
 const mock = require('./mock');
 
 describe('Master tests', function() {
     var fakePost;
     var fakeGet;
     var fakeAuth;
-    var clock;
     
     before(function(){
-        clock = sinon.useFakeTimers();
         if (!nock.isActive()) {
             nock.activate();
         }
@@ -34,7 +34,6 @@ describe('Master tests', function() {
         //nock.recorder.rec();
     });
     after(function(){
-        clock.restore();
         nock.restore();
     });
     beforeEach(function(){
@@ -46,23 +45,25 @@ describe('Master tests', function() {
 
         fakeAuth = sinon.stub(alcollector.AimsC.prototype, 'authenticate').callsFake(
             function fakeFn() {
-                return new Promise(function(resolve, reject) {
+                return new Promise(function(resolve, _reject) {
                     resolve(mock.getAuthResp());
                 });
         });
     });
-    afterEach(function(done) {
+    afterEach(async function() {
         fakePost.restore();
         fakeGet.restore();
         fakeAuth.restore();
-        fs.unlink(mock.AL_TOKEN_CACHE_FILENAME, function(err){
-            done();
-        });
+        try {
+            await fs.promises.unlink(mock.AL_TOKEN_CACHE_FILENAME);
+        } catch (err) {
+            if (err.code !== 'ENOENT') throw err;
+        }
         nock.cleanAll();
     });
     
     describe('Register tests', function() {
-        it('Verify collector register with endpoints update', function(done) {
+        it('Verify collector register with endpoints update', async function() {
             // Mock Azure HTTP calls
             nock('https://login.microsoftonline.com:443', {'encodedQueryParams':true})
             .post(/token$/, /.*/)
@@ -127,31 +128,28 @@ describe('Master tests', function() {
             process.env.APP_TENANT_ID = 'tenant-id';
             process.env.CUSTOMCONNSTR_APP_CLIENT_ID = 'client-id';
             process.env.CUSTOMCONNSTR_APP_CLIENT_SECRET = 'client-secret';
-            process.env.AzureWebJobsStorage = 'DefaultEndpointsProtocol=https;AccountName=testappo365;AccountKey=S0meKey+';
+            process.env.AzureWebJobsStorage = 'DefaultEndpointsProtocol=https;AccountName=testappo365;AccountKey=S0meKey+;EndpointSuffix=core.windows.net';
             
             var master = new AlAzureMaster(mock.DEFAULT_FUNCTION_CONTEXT, 'ehub', '1.0.0');
-            master.register({}, function(err, collectorHostId, collectorSourceId){
-                if (err) console.log(err);
-                assert.equal(process.env.APP_INGEST_ENDPOINT, 'new-ingest-endpoint');
-                assert.equal(process.env.APP_AZCOLLECT_ENDPOINT, 'new-azcollect-endpoint');
-                assert.equal(collectorHostId, 'new-host-id');
-                assert.equal(collectorSourceId, 'new-source-id');
-                const expectedRegisterBody = {
-                    body: {
-                        app_filter_json: "",
-                        app_filter_regex: "",
-                        app_tenant_id: "tenant-id",
-                        client_id: "client-id",
-                        client_secret: "client-secret",
-                        version: "1.0.0"
-                    }
-                };
-                sinon.assert.calledWith(fakePost, '/azure/ehub/subscription-id/kktest11-rg/kktest11-name', expectedRegisterBody);
-                done();
-            });
+            const registerResult = await master.register({});
+            assert.equal(process.env.APP_INGEST_ENDPOINT, 'new-ingest-endpoint');
+            assert.equal(process.env.APP_AZCOLLECT_ENDPOINT, 'new-azcollect-endpoint');
+            assert.equal(registerResult.hostId, 'new-host-id');
+            assert.equal(registerResult.sourceId, 'new-source-id');
+            const expectedRegisterBody = {
+                body: {
+                    app_filter_json: "",
+                    app_filter_regex: "",
+                    app_tenant_id: "tenant-id",
+                    client_id: "client-id",
+                    client_secret: "client-secret",
+                    version: "1.0.0"
+                }
+            };
+            sinon.assert.calledWith(fakePost, '/azure/ehub/subscription-id/kktest11-rg/kktest11-name', expectedRegisterBody);
         });
         
-        it('Verify register with custom parameters, no endpoints updates', function(done) {
+        it('Verify register with custom parameters, no endpoints updates', async function() {
             // Mock Azure HTTP calls
             nock('https://login.microsoftonline.com:443', {'encodedQueryParams':true})
             .post(/token/, /.*/ )
@@ -202,18 +200,15 @@ describe('Master tests', function() {
             delete process.env.COLLECTOR_SOURCE_ID;
             
             var master = new AlAzureMaster(mock.DEFAULT_FUNCTION_CONTEXT, 'ehub', '1.0.0', [], [], alOpts, azureOpts);
-            
-            master.register({}, function(err, collectorHostId, collectorSourceId){
-                if (err) console.log(err);
-                assert.equal(process.env.APP_INGEST_ENDPOINT, 'new-ingest-endpoint');
-                assert.equal(process.env.APP_AZCOLLECT_ENDPOINT, 'new-azcollect-endpoint');
-                assert.equal(collectorHostId, 'new-host-id1');
-                assert.equal(collectorSourceId, 'new-source-id1');
-                done();
-            });
+
+            const registerResult = await master.register({});
+            assert.equal(process.env.APP_INGEST_ENDPOINT, 'new-ingest-endpoint');
+            assert.equal(process.env.APP_AZCOLLECT_ENDPOINT, 'new-azcollect-endpoint');
+            assert.equal(registerResult.hostId, 'new-host-id1');
+            assert.equal(registerResult.sourceId, 'new-source-id1');
         });
 
-        it('Verify register with MSI', function(done) {
+        it('Verify register with MSI', async function() {
             // Mock Azure HTTP calls
             nock('https://management.azure.com:443', {'encodedQueryParams':true})
             .put(/appsettings/, /.*/ )
@@ -256,30 +251,27 @@ describe('Master tests', function() {
             process.env.APP_PRINCIPAL_ID = 'msi-principal-id';
             
             var master = new AlAzureMaster(mock.DEFAULT_FUNCTION_CONTEXT, 'ehub', '1.0.0', [], [], alOpts);
-            
-            master.register({}, function(err, collectorHostId, collectorSourceId){
-                if (err) console.log(err);
-                assert.equal(collectorHostId, 'new-host-id1');
-                assert.equal(collectorSourceId, 'new-source-id1');
-                const expectedBody = {
-                    body: {
-                        app_filter_json: '',
-                        app_filter_regex: '',
-                        app_tenant_id: 'tenant-id',
-                        client_id: process.env.APP_PRINCIPAL_ID,
-                        client_secret: 'Managed Service Identity',
-                        version: '1.0.0'
-                   }
-                };
-                sinon.assert.calledWith(fakePost, '/azure/ehub/subscription-id/rg/app-name', expectedBody);
-                delete process.env.MSI_SECRET;
-                delete process.env.MSI_ENDPOINT;
-                delete process.env.APP_PRINCIPAL_ID;
-                done();
-            });
+
+            const registerResult = await master.register({});
+            assert.equal(registerResult.hostId, 'new-host-id1');
+            assert.equal(registerResult.sourceId, 'new-source-id1');
+            const expectedBody = {
+                body: {
+                    app_filter_json: '',
+                    app_filter_regex: '',
+                    app_tenant_id: 'tenant-id',
+                    client_id: process.env.APP_PRINCIPAL_ID,
+                    client_secret: 'Managed Service Identity',
+                    version: '1.0.0'
+               }
+            };
+            sinon.assert.calledWith(fakePost, '/azure/ehub/subscription-id/rg/app-name', expectedBody);
+            delete process.env.MSI_SECRET;
+            delete process.env.MSI_ENDPOINT;
+            delete process.env.APP_PRINCIPAL_ID;
         });
 
-        it('Verify register reuse endpoints and collector ids from env', function(done) {
+        it('Verify register reuse endpoints and collector ids from env', async function() {
             // Expected Alert Logic parameters
             process.env.WEBSITE_HOSTNAME = 'app-name';
             process.env.CUSTOMCONNSTR_APP_AL_ACCESS_KEY_ID = mock.AL_KEY_ID;
@@ -298,21 +290,18 @@ describe('Master tests', function() {
             process.env.APP_TENANT_ID = 'tenant-id';
             process.env.CUSTOMCONNSTR_APP_CLIENT_ID = 'client-id';
             process.env.CUSTOMCONNSTR_APP_CLIENT_SECRET = 'client-secret';
-            process.env.AzureWebJobsStorage = 'DefaultEndpointsProtocol=https;AccountName=testappo365;AccountKey=S0meKey+';
+            process.env.AzureWebJobsStorage = 'DefaultEndpointsProtocol=https;AccountName=testappo365;AccountKey=S0meKey+;EndpointSuffix=core.windows.net';
             
             var master = new AlAzureMaster(mock.DEFAULT_FUNCTION_CONTEXT, 'ehub', '1.0.0');
-            
-            master.register({}, function(err, collectorHostId, collectorSourceId){
-                if (err) console.log(err);
-                assert.equal(process.env.APP_INGEST_ENDPOINT, 'existing-ingest-endpoint');
-                assert.equal(process.env.APP_AZCOLLECT_ENDPOINT, 'existing-azcollect-endpoint');
-                assert.equal(collectorHostId, 'existing-host-id');
-                assert.equal(collectorSourceId, 'existing-source-id');
-                done();
-            });
+
+            const registerResult = await master.register({});
+            assert.equal(process.env.APP_INGEST_ENDPOINT, 'existing-ingest-endpoint');
+            assert.equal(process.env.APP_AZCOLLECT_ENDPOINT, 'existing-azcollect-endpoint');
+            assert.equal(registerResult.hostId, 'existing-host-id');
+            assert.equal(registerResult.sourceId, 'existing-source-id');
         });
         
-        it('Verify collector deregister', function(done) {
+        it('Verify collector deregister', async function() {
             // Mock Alert Logic HTTP calls
                var fakeDelete = sinon.stub(alcollector.AlServiceC.prototype, 'deleteRequest');
                fakeDelete.withArgs('/azure/ehub/subscription-id/kktest11-rg/kktest11-name')
@@ -335,24 +324,22 @@ describe('Master tests', function() {
                process.env.APP_TENANT_ID = 'tenant-id';
                process.env.CUSTOMCONNSTR_APP_CLIENT_ID = 'client-id';
                process.env.CUSTOMCONNSTR_APP_CLIENT_SECRET = 'client-secret';
-               process.env.AzureWebJobsStorage = 'DefaultEndpointsProtocol=https;AccountName=testappo365;AccountKey=S0meKey+';
+               process.env.AzureWebJobsStorage = 'DefaultEndpointsProtocol=https;AccountName=testappo365;AccountKey=S0meKey+;EndpointSuffix=core.windows.net';
                
                var master = new AlAzureMaster(mock.DEFAULT_FUNCTION_CONTEXT, 'ehub', '1.0.0');
-               
-               master.deregister({}, function(err){
-                   if (err) console.log(err);
-                   fakeDelete.restore();
-                   const expectedUrl = '/azure/ehub/subscription-id/kktest11-rg/kktest11-name';
-                   assert.equal(null, err);
-                   sinon.assert.calledWith(fakeDelete, expectedUrl);
-                   done();
-               });
+
+               await master.deregister({});
+               fakeDelete.restore();
+               const expectedUrl = '/azure/ehub/subscription-id/kktest11-rg/kktest11-name';
+               sinon.assert.calledWith(fakeDelete, expectedUrl);
            });
     });
     
     describe('Checkin tests', function() {
         var fakeStats;
         var fakeAppInsightStats;
+        var fakeCollectionStats;
+        var fakeDlStats;
         
         beforeEach(function() {
             // Mock Azure HTTP calls
@@ -401,20 +388,30 @@ describe('Master tests', function() {
             
             // Mock Alert Logic HTTP calls
             fakePost = sinon.stub(alcollector.AlServiceC.prototype, 'post').callsFake(
-                function fakeFn(path, extraOptions) {
-                    return new Promise(function(resolve, reject){
+                function fakeFn(_path, _extraOptions) {
+                    return new Promise(function(resolve, _reject){
                         return resolve(mock.CHECKIN_RESPONSE_OK);
                     });
                 });
 
             fakeStats = sinon.stub(AzureWebAppStats.prototype, 'getAppStats').callsFake(
-                function fakeFn(path, callback) {
-                    return callback(null, mock.INVOCATION_STATS);
+                async function fakeFn(_path) {
+                    return mock.INVOCATION_STATS;
                 });
 
             fakeAppInsightStats = sinon.stub(AzureAppInsightStats.prototype, 'getAppStats').callsFake(
-                function fakeFn(path, callback) {
-                    return callback(null, mock.EMPTY_INVOCATION_STATS);
+                async function fakeFn(_path) {
+                    return mock.EMPTY_INVOCATION_STATS;
+                });
+
+            fakeCollectionStats = sinon.stub(AzureCollectionStats.prototype, 'getStats').callsFake(
+                async function fakeFn() {
+                    return { log: { bytes: 10, events: 15 } };
+                });
+
+            fakeDlStats = sinon.stub(AlAzureDlBlob.prototype, 'getDlBlobStats').callsFake(
+                async function fakeFn() {
+                    return { dl_stats: { dl_count: 6, max_dl_size: 4257 } };
                 });
 
             // Expected Alert Logic parameters
@@ -437,72 +434,70 @@ describe('Master tests', function() {
             process.env.APP_TENANT_ID = 'tenant-id';
             process.env.CUSTOMCONNSTR_APP_CLIENT_ID = 'client-id';
             process.env.CUSTOMCONNSTR_APP_CLIENT_SECRET = 'client-secret';
-            process.env.AzureWebJobsStorage = 'DefaultEndpointsProtocol=https;AccountName=testappo365;AccountKey=S0meKey+';
+            process.env.AzureWebJobsStorage = 'DefaultEndpointsProtocol=https;AccountName=testappo365;AccountKey=S0meKey+;EndpointSuffix=core.windows.net';
             
         });
         
-        afterEach(function(done) {
+        afterEach(async function() {
             fakeStats.restore();
             fakeAppInsightStats.restore();
+            fakeCollectionStats.restore();
+            fakeDlStats.restore();
             fakePost.resetHistory();
-            fs.unlink(mock.AL_TOKEN_CACHE_FILENAME, function(err){
-                done();
-            });
+            try {
+                await fs.promises.unlink(mock.AL_TOKEN_CACHE_FILENAME);
+            } catch (err) {
+                if (err.code !== 'ENOENT') throw err;
+            }
         });
         
-        it('Verify checkin ok', function(done) {
+        it('Verify checkin ok', async function() {
             var master = new AlAzureMaster(mock.DEFAULT_FUNCTION_CONTEXT, 'ehub', '1.0.0');
-            master.checkin('2017-12-22T14:31:39', function(err, resp){
-                if (err) console.log(err);
-                const expectedCheckin = { 
-                    body: {
-                        version: '1.0.0',
-                        app_tenant_id: 'tenant-id',
-                        collection_stats: { 'log': { 'bytes': 10, 'events': 15 } },
-                        host_id: 'existing-host-id',
-                        source_id: 'existing-source-id',
-                        statistics: [{ 'Master': { 'errors': 0, 'invocations': 2 } }, { 'Collector': { 'errors': 1, 'invocations': 10 } }, { 'Updater': { 'errors': 0, 'invocations': 0 } }],
-                        dl_stats: { dl_count: 6, max_dl_size: 4257 },
-                        status: 'ok',
-                        details: []
-                    }
-                };
-                const expectedUrl = '/azure/ehub/checkin/subscription-id/kktest11-rg/kktest11-name';
-                fakeStats.restore();
-                sinon.assert.calledWithMatch(fakePost, expectedUrl, expectedCheckin);
-                assert.equal(resp, mock.CHECKIN_RESPONSE_OK);
-                done();
-            });
+            const resp = await master.checkin('2017-12-22T14:31:39');
+            const expectedCheckin = {
+                body: {
+                    version: '1.0.0',
+                    app_tenant_id: 'tenant-id',
+                    collection_stats: { 'log': { 'bytes': 10, 'events': 15 } },
+                    host_id: 'existing-host-id',
+                    source_id: 'existing-source-id',
+                    statistics: [{ 'Master': { 'errors': 0, 'invocations': 2 } }, { 'Collector': { 'errors': 1, 'invocations': 10 } }, { 'Updater': { 'errors': 0, 'invocations': 0 } }],
+                    dl_stats: { dl_count: 6, max_dl_size: 4257 },
+                    status: 'ok',
+                    details: []
+                }
+            };
+            const expectedUrl = '/azure/ehub/checkin/subscription-id/kktest11-rg/kktest11-name';
+            fakeStats.restore();
+            sinon.assert.calledWithMatch(fakePost, expectedUrl, expectedCheckin);
+            assert.equal(resp, mock.CHECKIN_RESPONSE_OK);
         });
 
-        it('Verify checkin ok With Azure AppInsight Empty Stats', function(done) {
+        it('Verify checkin ok With Azure AppInsight Empty Stats', async function() {
             process.env.FUNCTIONS_EXTENSION_VERSION = '~4';
             var master = new AlAzureMaster(mock.DEFAULT_FUNCTION_CONTEXT, 'ehub', '1.0.0');
-            master.checkin('2017-12-22T14:31:39', function(err, resp){
-                if (err) console.log(err);
-                const expectedCheckin = { 
-                    body: {
-                        version: '1.0.0',
-                        app_tenant_id: 'tenant-id',
-                        collection_stats: { 'log': { 'bytes': 10, 'events': 15 } },
-                        host_id: 'existing-host-id',
-                        source_id: 'existing-source-id',
-                        statistics: [{ 'Master': { 'errors': 0, 'invocations': 0 } }, { 'Collector': { 'errors': 0, 'invocations': 0 } }, { 'Updater': { 'errors': 0, 'invocations': 0 } }],
-                        dl_stats: { dl_count: 6, max_dl_size: 4257 },
-                        status: 'ok',
-                        details: []
-                    }
-                };
-                const expectedUrl = '/azure/ehub/checkin/subscription-id/kktest11-rg/kktest11-name';
-                fakeAppInsightStats.restore();
-                process.env.FUNCTIONS_EXTENSION_VERSION = '~3';
-                sinon.assert.calledWithMatch(fakePost, expectedUrl, expectedCheckin);
-                assert.equal(resp, mock.CHECKIN_RESPONSE_OK);
-                done();
-            });
+            const resp = await master.checkin('2017-12-22T14:31:39');
+            const expectedCheckin = {
+                body: {
+                    version: '1.0.0',
+                    app_tenant_id: 'tenant-id',
+                    collection_stats: { 'log': { 'bytes': 10, 'events': 15 } },
+                    host_id: 'existing-host-id',
+                    source_id: 'existing-source-id',
+                    statistics: [{ 'Master': { 'errors': 0, 'invocations': 0 } }, { 'Collector': { 'errors': 0, 'invocations': 0 } }, { 'Updater': { 'errors': 0, 'invocations': 0 } }],
+                    dl_stats: { dl_count: 6, max_dl_size: 4257 },
+                    status: 'ok',
+                    details: []
+                }
+            };
+            const expectedUrl = '/azure/ehub/checkin/subscription-id/kktest11-rg/kktest11-name';
+            fakeAppInsightStats.restore();
+            process.env.FUNCTIONS_EXTENSION_VERSION = '~3';
+            sinon.assert.calledWithMatch(fakePost, expectedUrl, expectedCheckin);
+            assert.equal(resp, mock.CHECKIN_RESPONSE_OK);
         });
         
-        it('Verify checkin ok with force update', function(done) {
+        it('Verify checkin ok with force update', async function() {
             var syncMock = nock('https://management.azure.com:443', {'encodedQueryParams':true})
             .post(/sync/, /.*/ )
             .query(true)
@@ -510,36 +505,33 @@ describe('Master tests', function() {
             const forceUpdateRes = {force_update: true};
             fakePost.restore();
             fakePost = sinon.stub(alcollector.AlServiceC.prototype, 'post').callsFake(
-                function fakeFn(path, extraOptions) {
-                    return new Promise(function(resolve, reject){
+                function fakeFn(_path, _extraOptions) {
+                    return new Promise(function(resolve, _reject){
                         return resolve(forceUpdateRes);
                     });
                 });
             var master = new AlAzureMaster(mock.DEFAULT_FUNCTION_CONTEXT, 'ehub', '1.0.0');
-            master.checkin('2017-12-22T14:31:39', function(err, resp){
-                if (err) console.log(err);
-                const expectedCheckin = {
-                    body: {
-                        version: '1.0.0',
-                        app_tenant_id: 'tenant-id',
-                        collection_stats: { 'log': { 'bytes': 10, 'events': 15 } },
-                        host_id: 'existing-host-id',
-                        source_id: 'existing-source-id',
-                        statistics: [{ 'Master': { 'errors': 0, 'invocations': 2 } }, { 'Collector': { 'errors': 1, 'invocations': 10 } }, { 'Updater': { 'errors': 0, 'invocations': 0 } }],
-                        dl_stats: { dl_count: 6, max_dl_size: 4257 },
-                        status: 'ok',
-                        details: []
-                    }
-                };
-                const expectedUrl = '/azure/ehub/checkin/subscription-id/kktest11-rg/kktest11-name';
-                sinon.assert.calledWithMatch(fakePost, expectedUrl, expectedCheckin);
-                assert.equal(resp, forceUpdateRes);
-                assert.ok(syncMock);
-                done();
-            });
+            const resp = await master.checkin('2017-12-22T14:31:39');
+            const expectedCheckin = {
+                body: {
+                    version: '1.0.0',
+                    app_tenant_id: 'tenant-id',
+                    collection_stats: { 'log': { 'bytes': 10, 'events': 15 } },
+                    host_id: 'existing-host-id',
+                    source_id: 'existing-source-id',
+                    statistics: [{ 'Master': { 'errors': 0, 'invocations': 2 } }, { 'Collector': { 'errors': 1, 'invocations': 10 } }, { 'Updater': { 'errors': 0, 'invocations': 0 } }],
+                    dl_stats: { dl_count: 6, max_dl_size: 4257 },
+                    status: 'ok',
+                    details: []
+                }
+            };
+            const expectedUrl = '/azure/ehub/checkin/subscription-id/kktest11-rg/kktest11-name';
+            sinon.assert.calledWithMatch(fakePost, expectedUrl, expectedCheckin);
+            assert.equal(resp, forceUpdateRes);
+            assert.ok(syncMock);
         });
 
-        it('Verify checkin ok, no DL stats', function(done) {
+        it('Verify checkin ok, no DL stats', async function() {
             const storedDlName = process.env.APP_DL_CONTAINER_NAME;
             delete process.env.APP_DL_CONTAINER_NAME;
             
@@ -554,38 +546,31 @@ describe('Master tests', function() {
             process.env.APP_FILTER_REGEX = mock.AL_FILTERREGEX;
             
             var master = new AlAzureMaster(mock.DEFAULT_FUNCTION_CONTEXT, 'ehub', '1.0.0');
-            master.checkin('2017-12-22T14:31:39', function(err, resp){
-                if (err) console.log(err);
-                
-                process.env.APP_DL_CONTAINER_NAME = storedDlName;
-                let cs = new CollectionStatRecord();
-                cs.log.bytes = 10;
-                cs.log.events = 15;
-                const expectedCheckin = { 
-                    body: {
-                        version: '1.0.0',
-                        app_filter_json: '{\"Filter\": \"test1\"}',
-                        app_filter_regex: '{\"Filter\": \"test1\"}',
-                        app_tenant_id: 'tenant-id',
-                        collection_stats: cs,
-                        host_id: 'existing-host-id',
-                        source_id: 'existing-source-id',
-                        statistics: [{ 'Master': { 'errors': 0, 'invocations': 2 } }, { 'Collector': { 'errors': 1, 'invocations': 10 } }, { 'Updater': { 'errors': 0, 'invocations': 0 } }],
-                        // No DL stats
-                        //dl_stats: { dl_count: 6, max_dl_size: 4257 },
-                        status: 'ok',
-                        details: []
-                    }
-                };
-                const expectedUrl = '/azure/ehub/checkin/subscription-id/kktest11-rg/kktest11-name';
-                fakeStats.restore();
-                sinon.assert.calledWith(fakePost, expectedUrl, expectedCheckin);
-                assert.equal(resp, mock.CHECKIN_RESPONSE_OK);
-                done();
-            });
+            const resp = await master.checkin('2017-12-22T14:31:39');
+            process.env.APP_DL_CONTAINER_NAME = storedDlName;
+            let cs = new CollectionStatRecord();
+            cs.log.bytes = 10;
+            cs.log.events = 15;
+            const expectedCheckin = {
+                body: {
+                    version: '1.0.0',
+                    app_filter_json: '{\"Filter\": \"test1\"}',
+                    app_tenant_id: 'tenant-id',
+                    host_id: 'existing-host-id',
+                    source_id: 'existing-source-id',
+                    statistics: [{ 'Master': { 'errors': 0, 'invocations': 2 } }, { 'Collector': { 'errors': 1, 'invocations': 10 } }, { 'Updater': { 'errors': 0, 'invocations': 0 } }],
+                    collection_stats: { 'log': { 'bytes': 10, 'events': 15 } },
+                    status: 'ok',
+                    details: []
+                }
+            };
+            const expectedUrl = '/azure/ehub/checkin/subscription-id/kktest11-rg/kktest11-name';
+            fakeStats.restore();
+            sinon.assert.calledWithMatch(fakePost, expectedUrl, expectedCheckin);
+            assert.equal(resp, mock.CHECKIN_RESPONSE_OK);
         });
         
-        it('Verify checkin error', function(done) {
+        it('Verify checkin error', async function() {
             // Mock Azure HTTP calls
             nock('https://management.azure.com:443', {'encodedQueryParams':true})
             .get(/stats-error-name$/, /.*/ )
@@ -595,124 +580,112 @@ describe('Master tests', function() {
             
             process.env.WEBSITE_SITE_NAME = 'stats-error-name';
             var master = new AlAzureMaster(mock.DEFAULT_FUNCTION_CONTEXT, 'ehub', '1.0.0');
-            master.checkin('2017-12-22T14:31:39', function(err){
-                if (err) console.log(err);
-                const expectedCheckin = { 
-                    body: {
-                        version: '1.0.0',
-                        app_tenant_id: 'tenant-id',
-                        collection_stats: { 'log': { 'bytes': 10, 'events': 15 } },
-                        host_id: 'existing-host-id',
-                        source_id: 'existing-source-id',
-                        statistics: [{ 'Master': { 'errors': 0, 'invocations': 2 } }, { 'Collector': { 'errors': 1, 'invocations': 10 } }, { 'Updater': { 'errors': 0, 'invocations': 0 } }],
-                        dl_stats: { dl_count: 6, max_dl_size: 4257 },
-                        status: 'error',
-                        details: ['Azure Web Application status is not OK. {\"availabilityState\":\"Limited\"}'],
-                        error_code: 'ALAZU00001'
-                    }
-                };
-                const expectedUrl = '/azure/ehub/checkin/subscription-id/kktest11-rg/stats-error-name';
-                fakeStats.restore();
-                sinon.assert.calledWithMatch(fakePost, expectedUrl, expectedCheckin);
-                done();
-            });
+            await master.checkin('2017-12-22T14:31:39');
+            const expectedCheckin = {
+                body: {
+                    version: '1.0.0',
+                    app_tenant_id: 'tenant-id',
+                    collection_stats: { 'log': { 'bytes': 10, 'events': 15 } },
+                    host_id: 'existing-host-id',
+                    source_id: 'existing-source-id',
+                    statistics: [{ 'Master': { 'errors': 0, 'invocations': 2 } }, { 'Collector': { 'errors': 1, 'invocations': 10 } }, { 'Updater': { 'errors': 0, 'invocations': 0 } }],
+                    dl_stats: { dl_count: 6, max_dl_size: 4257 },
+                    status: 'error',
+                    details: ['Azure Web Application status is not OK. {\"availabilityState\":\"Limited\"}'],
+                    error_code: 'ALAZU00001'
+                }
+            };
+            const expectedUrl = '/azure/ehub/checkin/subscription-id/kktest11-rg/stats-error-name';
+            fakeStats.restore();
+            sinon.assert.calledWithMatch(fakePost, expectedUrl, expectedCheckin);
         });
         
-        it('Verify checkin with custom health-check ok', function(done) {
+        it('Verify checkin with custom health-check ok', async function() {
             var customHealthFuns = [
-                function(m, callback) {
-                    return callback(null);
+                async function(_m) {
+                    return null;
                 },
-                function(m, callback) {
-                    return callback(null);
+                async function(_m) {
+                    return null;
                 }
             ];
             var master = new AlAzureMaster(mock.DEFAULT_FUNCTION_CONTEXT, 'ehub', '1.0.0', customHealthFuns);
-            master.checkin('2017-12-22T14:31:39', function(err){
-                if (err) console.log(err);
-                const expectedCheckin = { 
-                    body: {
-                        version: '1.0.0',
-                        app_tenant_id: 'tenant-id',
-                        collection_stats: { 'log': { 'bytes': 10, 'events': 15 } },
-                        host_id: 'existing-host-id',
-                        source_id: 'existing-source-id',
-                        statistics: [{ 'Master': { 'errors': 0, 'invocations': 2 } }, { 'Collector': { 'errors': 1, 'invocations': 10 } }, { 'Updater': { 'errors': 0, 'invocations': 0 } }],
-                        dl_stats: { dl_count: 6, max_dl_size: 4257 },
-                        status: 'ok',
-                        details: []
-                    }
-                };
-                const expectedUrl = '/azure/ehub/checkin/subscription-id/kktest11-rg/kktest11-name';
-                sinon.assert.calledWithMatch(fakePost, expectedUrl, expectedCheckin);
-                done();
-            });
+            await master.checkin('2017-12-22T14:31:39');
+            const expectedCheckin = {
+                body: {
+                    version: '1.0.0',
+                    app_tenant_id: 'tenant-id',
+                    collection_stats: { 'log': { 'bytes': 10, 'events': 15 } },
+                    host_id: 'existing-host-id',
+                    source_id: 'existing-source-id',
+                    statistics: [{ 'Master': { 'errors': 0, 'invocations': 2 } }, { 'Collector': { 'errors': 1, 'invocations': 10 } }, { 'Updater': { 'errors': 0, 'invocations': 0 } }],
+                    dl_stats: { dl_count: 6, max_dl_size: 4257 },
+                    status: 'ok',
+                    details: []
+                }
+            };
+            const expectedUrl = '/azure/ehub/checkin/subscription-id/kktest11-rg/kktest11-name';
+            sinon.assert.calledWithMatch(fakePost, expectedUrl, expectedCheckin);
         });
         
-        it('Verify checkin with custom health-check error that returns a raw string', function(done) {
+        it('Verify checkin with custom health-check error that returns a raw string', async function() {
             var customHealthFuns = [
-                function(m, callback) {
-                    return callback(null);
+                async function(_m) {
+                    return null;
                 },
-                function(m, callback) {
-                    return callback("A Raw String Error");
+                async function(_m) {
+                    throw "A Raw String Error";
                 }
             ];
             var master = new AlAzureMaster(mock.DEFAULT_FUNCTION_CONTEXT, 'ehub', '1.0.0', customHealthFuns);
-            master.checkin('2017-12-22T14:31:39', function(err){
-                if (err) console.log(err);
-                const expectedCheckin = { 
-                    body: {
-                        version: '1.0.0',
-                        app_tenant_id: 'tenant-id',
-                        collection_stats: { 'log': { 'bytes': 10, 'events': 15 } },
-                        host_id: 'existing-host-id',
-                        source_id: 'existing-source-id',
-                        statistics: [{ 'Master': { 'errors': 0, 'invocations': 2 } }, { 'Collector': { 'errors': 1, 'invocations': 10 } }, { 'Updater': { 'errors': 0, 'invocations': 0 } }],
-                        status: 'error',
-                        details: ["A Raw String Error"],
-                        error_code: 'ALAZU000004'
-                    }
-                };
-                const expectedUrl = '/azure/ehub/checkin/subscription-id/kktest11-rg/kktest11-name';
-                sinon.assert.calledWithMatch(fakePost, expectedUrl, expectedCheckin);
-                done();
-            });
+            await master.checkin('2017-12-22T14:31:39');
+            const expectedCheckin = {
+                body: {
+                    version: '1.0.0',
+                    app_tenant_id: 'tenant-id',
+                    collection_stats: { 'log': { 'bytes': 10, 'events': 15 } },
+                    host_id: 'existing-host-id',
+                    source_id: 'existing-source-id',
+                    statistics: [{ 'Master': { 'errors': 0, 'invocations': 2 } }, { 'Collector': { 'errors': 1, 'invocations': 10 } }, { 'Updater': { 'errors': 0, 'invocations': 0 } }],
+                    status: 'error',
+                    details: ["A Raw String Error"],
+                    error_code: 'ALAZU000004'
+                }
+            };
+            const expectedUrl = '/azure/ehub/checkin/subscription-id/kktest11-rg/kktest11-name';
+            sinon.assert.calledWithMatch(fakePost, expectedUrl, expectedCheckin);
         });
 
-        it('Verify checkin with custom health-check error', function(done) {
+        it('Verify checkin with custom health-check error', async function() {
             var customHealthFuns = [
-                function(m, callback) {
-                    return callback(null);
+                async function(_m) {
+                    return null;
                 },
-                function(m, callback) {
-                    return callback(m.errorStatusFmt('ALAZU000004', 'Custom Error'));
+                async function(m) {
+                    throw m.errorStatusFmt('ALAZU000004', 'Custom Error');
                 }
             ];
             var master = new AlAzureMaster(mock.DEFAULT_FUNCTION_CONTEXT, 'ehub', '1.0.0', customHealthFuns);
-            master.checkin('2017-12-22T14:31:39', function(err){
-                if (err) console.log(err);
-                const expectedCheckin = { 
-                    body: {
-                        version: '1.0.0',
-                        app_tenant_id: 'tenant-id',
-                        collection_stats: { 'log': { 'bytes': 10, 'events': 15 } },
-                        host_id: 'existing-host-id',
-                        source_id: 'existing-source-id',
-                        statistics: [{ 'Master': { 'errors': 0, 'invocations': 2 } }, { 'Collector': { 'errors': 1, 'invocations': 10 } }, { 'Updater': { 'errors': 0, 'invocations': 0 } }],
-                        dl_stats: { dl_count: 6, max_dl_size: 4257 },
-                        status: 'error',
-                        details: ['Custom Error'],
-                        error_code: 'ALAZU000004'
-                    }
-                };
-                const expectedUrl = '/azure/ehub/checkin/subscription-id/kktest11-rg/kktest11-name';
-                sinon.assert.calledWithMatch(fakePost, expectedUrl, expectedCheckin);
-                done();
-            });
+            await master.checkin('2017-12-22T14:31:39');
+            const expectedCheckin = {
+                body: {
+                    version: '1.0.0',
+                    app_tenant_id: 'tenant-id',
+                    collection_stats: { 'log': { 'bytes': 10, 'events': 15 } },
+                    host_id: 'existing-host-id',
+                    source_id: 'existing-source-id',
+                    statistics: [{ 'Master': { 'errors': 0, 'invocations': 2 } }, { 'Collector': { 'errors': 1, 'invocations': 10 } }, { 'Updater': { 'errors': 0, 'invocations': 0 } }],
+                    dl_stats: { dl_count: 6, max_dl_size: 4257 },
+                    status: 'error',
+                    details: ['Custom Error'],
+                    error_code: 'ALAZU000004'
+                }
+            };
+            const expectedUrl = '/azure/ehub/checkin/subscription-id/kktest11-rg/kktest11-name';
+            sinon.assert.calledWithMatch(fakePost, expectedUrl, expectedCheckin);
         });
         
-        it('Verify checkin with custom health-check error ALAZU000005 connection limit exhausted', function(done) {
+        it('Verify checkin with custom health-check error ALAZU000005 connection limit exhausted', async function() {
             var errMessage = {
                 "message": "request to http://127.0.0.1:41512/msi/token/?resource=https%3A%2F%2Fmanagement.azure.com%2F&api-version=2017-09-01 failed, reason: connect EACCES 127.0.0.1:41512 - Local (undefined:undefined)",
                 "type": "system",
@@ -720,37 +693,34 @@ describe('Master tests', function() {
                 "code": "EACCES"
             }; 
             var customHealthFuns = [
-                function(m, callback) {
-                    return callback(null);
+                async function(_m) {
+                    return null;
                 },
-                function(m, callback) {
-                    return callback(errMessage);
+                async function(_m) {
+                    throw errMessage;
                 }
             ];
             var master = new AlAzureMaster(mock.DEFAULT_FUNCTION_CONTEXT, 'ehub', '1.0.0', customHealthFuns);
-            master.checkin('2017-12-22T14:31:39', function(err){
-                if (err) console.log(err);
-                const expectedCheckin = { 
-                    body: {
-                        version: '1.0.0',
-                        app_tenant_id: 'tenant-id',
-                        collection_stats: { 'log': { 'bytes': 10, 'events': 15 } },
-                        host_id: 'existing-host-id',
-                        source_id: 'existing-source-id',
-                        statistics: [{ 'Master': { 'errors': 0, 'invocations': 2 } }, { 'Collector': { 'errors': 1, 'invocations': 10 } }, { 'Updater': { 'errors': 0, 'invocations': 0 } }],
-                        dl_stats: { dl_count: 6, max_dl_size: 4257 },
-                        status: 'error',
-                        details: [errMessage.message],
-                        error_code: 'ALAZU000005'
-                    }
-                };
-                const expectedUrl = '/azure/ehub/checkin/subscription-id/kktest11-rg/kktest11-name';
-                sinon.assert.calledWithMatch(fakePost, expectedUrl, expectedCheckin);
-                done();
-            });
+            await master.checkin('2017-12-22T14:31:39');
+            const expectedCheckin = {
+                body: {
+                    version: '1.0.0',
+                    app_tenant_id: 'tenant-id',
+                    collection_stats: { 'log': { 'bytes': 10, 'events': 15 } },
+                    host_id: 'existing-host-id',
+                    source_id: 'existing-source-id',
+                    statistics: [{ 'Master': { 'errors': 0, 'invocations': 2 } }, { 'Collector': { 'errors': 1, 'invocations': 10 } }, { 'Updater': { 'errors': 0, 'invocations': 0 } }],
+                    dl_stats: { dl_count: 6, max_dl_size: 4257 },
+                    status: 'error',
+                    details: [errMessage.message],
+                    error_code: 'ALAZU000005'
+                }
+            };
+            const expectedUrl = '/azure/ehub/checkin/subscription-id/kktest11-rg/kktest11-name';
+            sinon.assert.calledWithMatch(fakePost, expectedUrl, expectedCheckin);
         });
 
-        it('Verify checkin with custom health-check error ALAZU000006 connection limit exhausted', function(done) {
+        it('Verify checkin with custom health-check error ALAZU000006 connection limit exhausted', async function() {
             var errMessage = {
                 "message": "request to http://127.0.0.1:41512/msi/token/?resource=https%3A%2F%2Fmanagement.azure.com%2F&api-version=2017-09-01 failed, reason: connect EACCES 127.0.0.1:41512 - Local (undefined:undefined)",
                 "type": "system",
@@ -758,34 +728,31 @@ describe('Master tests', function() {
                 "code": "EACCES"
             }; 
             var customHealthFuns = [
-                function(m, callback) {
-                    return callback(null);
+                async function(_m) {
+                    return null;
                 },
-                function(m, callback) {
-                    return callback(master.errorStatusFmt('ALAZU000006', JSON.stringify(errMessage)));
+                async function(_m) {
+                    throw master.errorStatusFmt('ALAZU000006', JSON.stringify(errMessage));
                 }
             ];
             var master = new AlAzureMaster(mock.DEFAULT_FUNCTION_CONTEXT, 'ehub', '1.0.0', customHealthFuns);
-            master.checkin('2017-12-22T14:31:39', function(err){
-                if (err) console.log(err);
-                const expectedCheckin = { 
-                    body: {
-                        version: '1.0.0',
-                        app_tenant_id: 'tenant-id',
-                        collection_stats: { 'log': { 'bytes': 10, 'events': 15 } },
-                        host_id: 'existing-host-id',
-                        source_id: 'existing-source-id',
-                        statistics: [{ 'Master': { 'errors': 0, 'invocations': 2 } }, { 'Collector': { 'errors': 1, 'invocations': 10 } }, { 'Updater': { 'errors': 0, 'invocations': 0 } }],
-                        dl_stats: { dl_count: 6, max_dl_size: 4257 },
-                        status: 'error',
-                        details: [JSON.stringify(errMessage)],
-                        error_code: 'ALAZU000006'
-                    }
-                };
-                const expectedUrl = '/azure/ehub/checkin/subscription-id/kktest11-rg/kktest11-name';
-                sinon.assert.calledWithMatch(fakePost, expectedUrl, expectedCheckin);
-                done();
-            });
+            await master.checkin('2017-12-22T14:31:39');
+            const expectedCheckin = {
+                body: {
+                    version: '1.0.0',
+                    app_tenant_id: 'tenant-id',
+                    collection_stats: { 'log': { 'bytes': 10, 'events': 15 } },
+                    host_id: 'existing-host-id',
+                    source_id: 'existing-source-id',
+                    statistics: [{ 'Master': { 'errors': 0, 'invocations': 2 } }, { 'Collector': { 'errors': 1, 'invocations': 10 } }, { 'Updater': { 'errors': 0, 'invocations': 0 } }],
+                    dl_stats: { dl_count: 6, max_dl_size: 4257 },
+                    status: 'error',
+                    details: [JSON.stringify(errMessage)],
+                    error_code: 'ALAZU000006'
+                }
+            };
+            const expectedUrl = '/azure/ehub/checkin/subscription-id/kktest11-rg/kktest11-name';
+            sinon.assert.calledWithMatch(fakePost, expectedUrl, expectedCheckin);
         });
         
     });

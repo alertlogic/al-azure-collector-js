@@ -8,10 +8,8 @@
  * -----------------------------------------------------------------------------
  */
 'use strict';
-const async = require('async');
 const { WebSiteManagementClient } = require('@azure/arm-appservice');
-const { MSIAppServiceTokenCredentials, ApplicationTokenCredentials } = require('@azure/ms-rest-nodeauth');
-const WebSiteManagement = require('@azure/arm-appservice');
+const { ManagedIdentityCredential, ClientSecretCredential } = require('@azure/identity');
 const fs = require('fs');
 
 const m_util = require('./util');
@@ -47,68 +45,50 @@ class AlAzureUpdater {
 
     _getAzureCredentials() {
         if (process.env.MSI_ENDPOINT && process.env.MSI_SECRET) {
-            const options = {
-                msiEndpoint: process.env.MSI_ENDPOINT,
-                msiSecret: process.env.MSI_SECRET,
-            };
-            return new MSIAppServiceTokenCredentials(options);
+            // Use Managed Identity when running in Azure Functions
+            return new ManagedIdentityCredential();
         } else {
-            return new ApplicationTokenCredentials(this._clientId, this._domain, this._clientSecret);
+            // Use Client Secret for service principal authentication
+            return new ClientSecretCredential(this._domain, this._clientId, this._clientSecret);
         }
     }
 
-    syncWebApp(callback) {
-        const credentials = this._getAzureCredentials();
-        const webSiteClient = new WebSiteManagementClient(credentials, this._subscriptionId);
-        return webSiteClient.webApps.syncRepository(this._resourceGroup, this._webAppName, callback);
+    async syncWebApp() {
+        try {
+            // Reuse the existing client to prevent socket exhaustion
+            return await this._azureWebsiteClient.webApps.syncRepository(this._resourceGroup, this._webAppName);
+        } catch (error) {
+            throw new Error(`syncWebApp failed: ${error.message}`);
+        }
     }
 
-    setEnvConfigChanges(envObject, callback) {
-        var updateEnv = envObject;
-        m_util.updateAppSettings(updateEnv, this.azureWebsiteClientObject, function (settingsError) {
-            if (settingsError) {
-                return callback(settingsError);
-            } else {
-                return callback(null);
-            }
-        });
+    async setEnvConfigChanges(envObject) {
+        try {
+            var updateEnv = envObject;
+            await m_util.updateAppSettings(updateEnv, this.azureWebsiteClientObject);
+        } catch (error) {
+            throw new Error(`setEnvConfigChanges failed: ${error.message}`);
+        }
     }
     
-    readEnvFile(callback){
-        fs.readFile(process.cwd() + "/" + process.env.AZURE_FUN_UPDATE_CONFIG_NAME, 'utf-8', function (err, data) {
-            if (err) {
-                return callback(err);
-            } else {
-                try {
-                    const envData = JSON.parse(data);
-                    return callback(null, envData);   
-                } catch (error) {
-                    return callback(error);   
-                }
-            }
-        });
+    async readEnvFile(){
+        try {
+            const data = await fs.promises.readFile(process.cwd() + "/" + process.env.AZURE_FUN_UPDATE_CONFIG_NAME, 'utf-8');
+            return JSON.parse(data);
+        } catch (error) {
+            throw new Error(`readEnvFile failed: ${error.message}`);
+        }
     }
     
-    run(callback) {
-        var updater = this;
-        async.waterfall([
-            function (asyncCallback) {
-                updater.syncWebApp((err, siteSync) => {
-                    return asyncCallback(err, siteSync);
-                });
-            },
-            function (siteSync, asyncCallback) {
-                updater.readEnvFile((err, resultEnv) => {
-                    return asyncCallback(err, resultEnv);
-                });
-            },
-            function (resultEnv, asyncCallback) {
-                updater.setEnvConfigChanges(resultEnv.Runtime, (err, result) => {
-                    return asyncCallback(err, result);
-                });
-            }],
-            callback
-        );
+    async run() {
+        try {
+            await this.syncWebApp();
+            const resultEnv = await this.readEnvFile();
+            await this.setEnvConfigChanges(resultEnv.Runtime);
+            return true;
+        } catch (error) {
+            throw new Error(`run failed: ${error.message}`);
+        }
     }
 }
 

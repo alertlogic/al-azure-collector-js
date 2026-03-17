@@ -8,46 +8,45 @@
  * -----------------------------------------------------------------------------
  */
 
-const async = require('async');
 const util = require('util');
 const moment = require('moment');
 const parse = require('parse-key-value');
+const { ensureEndpointSuffix } = require('./util');
 
-const { ApplicationInsightsDataClient } = require("@azure/applicationinsights-query");
 const { DefaultAzureCredential } = require("@azure/identity");
 const { ApplicationInsightsManagementClient } = require("@azure/arm-appinsights");
-const azureStorage = require('azure-storage');
-const TableQuery = azureStorage.TableQuery;
-const TableUtilities = azureStorage.TableUtilities;
+const { TableClient } = require("@azure/data-tables");
+const { QueueServiceClient } = require("@azure/storage-queue");
+const ApplicationInsightsQueryClient = require('./applicationinsights_query_client');
 
-const STATS_PERIOD_MINUTES = 15;
-
-const STAT_MSG_VISIBILITY_TIMEOUT_SEC = 300;
-const STAT_MSG_NUMBER_PER_BATCH = 32;
-const MAX_STATS_PAGES = 10;
-
-const STAT_TYPES_LOG = 1;
-
+// Statistics configuration constants
+const STATS_PERIOD_MINUTES = 15;           // Statistics aggregation period in minutes
+const STAT_MSG_VISIBILITY_TIMEOUT_SEC = 300; // Queue message visibility timeout in seconds
+const STAT_MSG_NUMBER_PER_BATCH = 32;     // Stats messages per batch
+const MAX_STATS_PAGES = 10;               // Max pages to retrieve stats from
+const MAX_TABLE_ENTITIES_PER_QUERY = 1000; // Max entities to retrieve per table query
+const STAT_TYPES_LOG = 1;                 // Log type identifier
 const DEFAULT_STATS_QUEUE_NAME = 'alertlogic-stats';
+
 class AzureAppStats {
     constructor(functionNames = []) {
         this._functionNames = functionNames;
     }
     
-    getFunctionStats(functionName, timestamp, callback) {
-        var obj = {};
+    async getFunctionStats(functionName, timestamp) {
+        const obj = {};
         obj[functionName] = {
             invocations : 0,
             errors : 0
         };
-        return callback(null, obj);
+        return obj;
     };
 
     /**
      * @function
      * @param {String} timestamp -  for example, '2017-12-22T14:31:39'. Usually Master function timer trigger value is used.
      * 
-     * @return callback(err, stats)
+     * @return Promise resolves to stats
      * @param {Object} stats - for example,
      * {
      *   statistics: [
@@ -63,21 +62,12 @@ class AzureAppStats {
      *   ]
      * }
      */
-    getAppStats(timestamp, callback) {
-        var appStats = this;
-        async.map(appStats._functionNames,
-            function(fname, callback){
-                appStats.getFunctionStats(fname, timestamp, callback); 
-            },
-            function (mapErr, mapsResult) {
-                if (mapErr) {
-                    return callback(mapErr);
-                } else {
-                    return callback(null, {statistics: mapsResult});
-                }
-            });
+    async getAppStats(timestamp) {
+        const results = await Promise.all(
+            this._functionNames.map(fname => this.getFunctionStats(fname, timestamp))
+        );
+        return { statistics: results };
     };
-
 }
 
 /**
@@ -90,15 +80,29 @@ class AzureAppStats {
 class AzureWebAppStats extends AzureAppStats {
     constructor(functionNames = []) {
         super(functionNames);
-        const storageParams = parse(process.env.AzureWebJobsStorage);
-        this._tableService = azureStorage.createTableService(
-            storageParams.AccountName, 
-            storageParams.AccountKey, 
-            storageParams.AccountName + '.table.core.windows.net');
+        this._connectionString = ensureEndpointSuffix(process.env.AzureWebJobsStorage);
+        const storageParams = parse(this._connectionString);
+        const tableUrl = `https://${storageParams.AccountName}.table.core.windows.net`;
+        this._tableUrl = tableUrl;
+        // Cache TableClient to prevent socket exhaustion
+        this._cachedTableClient = null;
+        this._cachedTableName = null;
     }
 
-    getTableService() {
-        return this._tableService;
+    _getTableClient() {
+        const currentTableName = this.getLogTableName();
+        // Reuse client if table name hasn't changed (same month)
+        if (this._cachedTableClient && this._cachedTableName === currentTableName) {
+            return this._cachedTableClient;
+        }
+        // Create new client only when month changes
+        this._cachedTableName = currentTableName;
+        this._cachedTableClient = TableClient.fromConnectionString(this._connectionString, currentTableName);
+        return this._cachedTableClient;
+    }
+
+    getTableUrl() {
+        return this._tableUrl;
     }
 
     getLogTableName() {
@@ -106,20 +110,9 @@ class AzureWebAppStats extends AzureAppStats {
     }
 
     _getInvocationsQuery(functionName, timestamp) {
-        var functionFilter = TableQuery.stringFilter(
-            'FunctionName',
-            TableUtilities.QueryComparisons.EQUAL,
-            functionName);
-        var dateFilter = TableQuery.dateFilter(
-            'StartTime',
-            TableUtilities.QueryComparisons.GREATER_THAN_OR_EQUAL,
-            new Date(moment(timestamp).utc().subtract(STATS_PERIOD_MINUTES, 'minutes')));
-        var whereFilter = TableQuery.combineFilters(
-            dateFilter,
-            TableUtilities.TableOperators.AND,
-            functionFilter);
-
-        return new TableQuery().where(whereFilter);
+        const functionStartTime = moment(timestamp).utc().subtract(STATS_PERIOD_MINUTES, 'minutes').toDate();
+        const filterString = `FunctionName eq '${functionName}' and StartTime ge datetime'${functionStartTime.toISOString()}'`;
+        return filterString;
     };
 
     _getInvocationStats(entities, accStats) {
@@ -134,52 +127,36 @@ class AzureWebAppStats extends AzureAppStats {
             accStats);
     };
 
-    getFunctionStats(functionName, timestamp, callback) {
+    async getFunctionStats(functionName, timestamp) {
         let accStats = {
             invocations: 0,
             errors: 0
         };
-        let initialToken = {
-            token: null,
-            pageNum: 0
-        };
-        return this._getFunctionStatsAcc(functionName, timestamp, initialToken, accStats, callback);
-    };
+        
+        try {
+            // Reuse cached TableClient to prevent socket exhaustion
+            const tableClient = this._getTableClient();
 
-    _getFunctionStatsAcc(functionName, timestamp, contToken, accStats, callback) {
-        var tableService = this._tableService;
-        var appstats = this;
-        var obj = {};
-
-        tableService.queryEntities(
-            appstats.getLogTableName(),
-            appstats._getInvocationsQuery(functionName, timestamp),
-            contToken.token,
-            function (error, result) {
-                if (error) {
-                    obj[functionName] = {
-                        error: `${error}`
-                    };
-                    return callback(null, obj);
-                } else {
-                    if (result.continuationToken && contToken.pageNum < MAX_STATS_PAGES) {
-                        let cont = {
-                            token: result.continuationToken,
-                            pageNum: contToken.pageNum + 1
-                        };
-
-                        return appstats._getFunctionStatsAcc(
-                            functionName,
-                            timestamp,
-                            cont,
-                            appstats._getInvocationStats(result.entries, accStats),
-                            callback);
-                    } else {
-                        obj[functionName] = appstats._getInvocationStats(result.entries, accStats);
-                        return callback(null, obj);
-                    }
+            const filterString = this._getInvocationsQuery(functionName, timestamp);
+            const entities = [];
+            
+            for await (const entity of tableClient.listEntities({ filter: filterString })) {
+                entities.push(entity);
+                if (entities.length >= MAX_TABLE_ENTITIES_PER_QUERY) {
+                    break;
                 }
-            });
+            }
+
+            const obj = {};
+            obj[functionName] = this._getInvocationStats(entities, accStats);
+            return obj;
+        } catch (error) {
+            const obj = {};
+            obj[functionName] = {
+                error: `${error}`
+            };
+            return obj;
+        }
     };
 
     /**
@@ -189,7 +166,7 @@ class AzureWebAppStats extends AzureAppStats {
      * 
      * @param {String} timestamp -  for example, '2017-12-22T14:31:39'. Usually Master function timer trigger value is used.
      * 
-     * @return callback(err, stats)
+     * @return Promise resolves to stats
      * @param {Object} stats - for example,
      * {
      *   statistics: [
@@ -205,21 +182,12 @@ class AzureWebAppStats extends AzureAppStats {
      *   ]
      * }
      */
-    getAppStats(timestamp, callback) {
-        var appstats = this;
-        async.map(appstats._functionNames,
-            function (fname, callback) {
-                appstats.getFunctionStats(fname, timestamp, callback);
-            },
-            function (mapErr, mapsResult) {
-                if (mapErr) {
-                    return callback(mapErr);
-                } else {
-                    return callback(null, { statistics: mapsResult });
-                }
-            });
+    async getAppStats(timestamp) {
+        const results = await Promise.all(
+            this._functionNames.map(fname => this.getFunctionStats(fname, timestamp))
+        );
+        return { statistics: results };
     };
-
 }
 
 class AzureAppInsightStats extends AzureAppStats {
@@ -231,24 +199,26 @@ class AzureAppInsightStats extends AzureAppStats {
         this.subscriptionId = subscriptionId;
         this.resourceGroup = resourceGroup;
         this.invocationsCount = [];
+        // Cache clients to prevent socket exhaustion
+        this._insightsManagementClient = new ApplicationInsightsManagementClient(new DefaultAzureCredential(), this.subscriptionId);
+        this._insightsQueryClient = new ApplicationInsightsQueryClient(this.tokenCredentials, { subscriptionId: this.subscriptionId });
     }
 
     setFunctionStats(invocationsCount) {
         this.invocationsCount = invocationsCount;
     }
 
-    getFunctionStats(functionName, timestamp, callback) {
-        super.getFunctionStats(functionName, timestamp, callback);
+    async getFunctionStats(functionName, timestamp) {
+        return super.getFunctionStats(functionName, timestamp);
     }
     
-    getAppInsightsFunctionStats(functionNames, timestamp, callback) {
-        var appstats = this;
-        const managementClient = new ApplicationInsightsManagementClient(new DefaultAzureCredential(), this.subscriptionId);
-        managementClient.components.listByResourceGroup(this.resourceGroup).then((result) => {
-            const insightsClient = new ApplicationInsightsDataClient(this.tokenCredentials, { subscriptionId: this.subscriptionId });
-            let stringifiedFunctionNames = JSON.stringify(functionNames).replace(/\[|\]/g, '');
-            let query = {
-                "query": `requests
+    async getAppInsightsFunctionStats(functionNames, timestamp) {
+        // Reuse cached clients to prevent socket exhaustion
+        const result = await this._insightsManagementClient.components.listByResourceGroup(this.resourceGroup);
+        const insightsClient = this._insightsQueryClient;
+        let stringifiedFunctionNames = JSON.stringify(functionNames).replace(/\[|\]/g, '');
+        let query = {
+            query: `requests
                     | where operation_Name in (${stringifiedFunctionNames})
                     | where timestamp > ago(15m)
                     | order by timestamp desc
@@ -256,75 +226,40 @@ class AzureAppInsightStats extends AzureAppStats {
                     | summarize errors = countif(success == "False"),invocations = countif(success == "True" or success == "False") by operation_Name
                     | extend details = pack_all()
                     | summarize Result = make_list(details,128)`
-            };
-            insightsClient.query.execute(result[0].appId, query).then((result) => {
-                try {
-                    const data = JSON.parse(result.tables[0].rows[0]);
-                    if (data.length) {
-                        const mapResult = data.map((item) => {
-                            return { [item.operation_Name]: { invocations: item.invocations, errors: item.errors } };
-                        });
-                        return callback(null, { statistics: mapResult });
-                    } else {
-                        appstats.azureContext.log.info(`appstats.invocationsCount ${JSON.stringify(appstats.invocationsCount)}`)
-                        if (appstats.invocationsCount.length > 0) {
-                            return callback(null, { statistics: appstats.invocationsCount });
-                        } else {
-                            async.map(functionNames,
-                                function (fname, callback) {
-                                    appstats.getFunctionStats(fname, timestamp, callback);
-                                },
-                                function (mapErr, mapsResult) {
-                                    if (mapErr) {
-                                        return callback(mapErr);
-                                    } else {
-                                        return callback(null, { statistics: mapsResult });
-                                    }
-                                });
-                        }
-                    }
-                } catch (err) {
-                    let errMessage = `An error occurred, while getting statistics ${err}`;
-                    return callback(errMessage, null);
-                }
-            }).catch((err) => {
-                let errMessage = `An error occurred, while executing application insights query ${err}`;
-                return callback(errMessage, null);
+        };
+        let appId = result[0].appId;
+        const queryResults = await insightsClient.query.execute(appId, query);
+        const rows = queryResults && queryResults.tables && queryResults.tables[0] && queryResults.tables[0].rows ? queryResults.tables[0].rows : [];
+        const row = rows.length > 0 ? rows[0] : null;
+        const data = row ? JSON.parse(row[0]) : [];
+        if (data.length) {
+            const mapResult = data.map((item) => {
+                return { [item.operation_Name]: { invocations: item.invocations, errors: item.errors } };
             });
-        }).catch((err) => {
-            if (appstats.invocationsCount.length > 0) {
-                return callback(null, { statistics: appstats.invocationsCount });
-            } else {
-                let errMessage = `An error occurred, while getting application insights appId ${err}`;
-                return callback(errMessage, null);
-            }
-        });
+            return { statistics: mapResult };
+        }
 
+        this.azureContext.log.info(`appstats.invocationsCount ${JSON.stringify(this.invocationsCount)}`);
+        if (this.invocationsCount.length > 0) {
+            return { statistics: this.invocationsCount };
+        }
+
+        const fallback = await Promise.all(functionNames.map((fname) => this.getFunctionStats(fname, timestamp)));
+        return { statistics: fallback };
     }
 
-    getAppStats(timestamp, callback) {
-        var appstats = this;
+    async getAppStats(timestamp) {
         if (process.env.APPINSIGHTS_INSTRUMENTATIONKEY || process.env.APPLICATIONINSIGHTS_CONNECTION_STRING) {
-            appstats.getAppInsightsFunctionStats(appstats._functionNames, timestamp, callback);
-        } else {
-            if (appstats.invocationsCount.length > 0) {
-                return callback(null, { statistics: appstats.invocationsCount });
-            } else {
-                async.map(appstats._functionNames,
-                    function (fname, callback) {
-                        appstats.getFunctionStats(fname, timestamp, callback);
-                    },
-                    function (mapErr, mapsResult) {
-                        if (mapErr) {
-                            return callback(mapErr);
-                        } else {
-                            return callback(null, { statistics: mapsResult });
-                        }
-                    });
-            }
+            return this.getAppInsightsFunctionStats(this._functionNames, timestamp);
         }
-    };
 
+        if (this.invocationsCount.length > 0) {
+            return { statistics: this.invocationsCount };
+        }
+
+        const results = await Promise.all(this._functionNames.map((fname) => this.getFunctionStats(fname, timestamp)));
+        return { statistics: results };
+    };
 }
 
 class CollectionStatRecord {
@@ -333,14 +268,14 @@ class CollectionStatRecord {
             bytes: 0,
             events: 0
         };
-    };
+    }
 
     reset() {
         this.log = {
             bytes: 0,
             events: 0
         };
-    };
+    }
 
     add(addStats) {
         if (addStats instanceof CollectionStatRecord) {
@@ -348,7 +283,7 @@ class CollectionStatRecord {
             this.log.events += addStats.log.events;
         }
         return this;
-    };
+    }
 
     subtract(subtractStats) {
         if (subtractStats instanceof CollectionStatRecord) {
@@ -356,20 +291,14 @@ class CollectionStatRecord {
             this.log.events -= subtractStats.log.events > this.log.events ? this.log.events : subtractStats.log.events;
         }
         return this;
-    };
+    }
 
-    // Update with stat messages from the Storage queue.
-    // msg.messageText is a JSON like.
-    // {invocationId : invId,
-    //  type: STAT_TYPES_LOG,
-    //  bytes: collectedBytes,
-    //  events: collectedEvents}
-    //
     _aggregateStats(statsMessages) {
         var initStats = new CollectionStatRecord();
         return statsMessages.reduce(function (acc, curr) {
             try {
-                const stat = JSON.parse(curr.messageText);
+                const message = curr.messageText || curr.body;
+                const stat = JSON.parse(message);
                 switch (stat.type) {
                     case STAT_TYPES_LOG:
                         acc.log.bytes += stat.bytes;
@@ -378,18 +307,18 @@ class CollectionStatRecord {
 
                     default:
                         break;
-                };
+                }
                 return acc;
             } catch (e) {
                 return acc;
             }
         }, initStats);
-    };
+    }
 
     aggregateAdd(statsMessages) {
         const aggrStats = this._aggregateStats(statsMessages);
         return this.add(aggrStats);
-    };
+    }
 
     aggregateSubtract(statsMessages) {
         const aggrStats = this._aggregateStats(statsMessages);
@@ -399,85 +328,91 @@ class CollectionStatRecord {
 
 class AzureCollectionStats {
     constructor(context, { statsQueueName, outputQueueBinding } = {}) {
-        const storageParams = parse(process.env.AzureWebJobsStorage);
+        this._connectionString = ensureEndpointSuffix(process.env.AzureWebJobsStorage);
+        const storageParams = parse(this._connectionString);
         this._context = context;
         this._statsQueueName = statsQueueName ? statsQueueName :
             process.env.APP_STATS_QUEUE_NAME ? process.env.APP_STATS_QUEUE_NAME : DEFAULT_STATS_QUEUE_NAME;
         this._outputQueueBinding = outputQueueBinding;
-        this._queueService = azureStorage.createQueueService(
-            storageParams.AccountName,
-            storageParams.AccountKey,
-            storageParams.AccountName + '.queue.core.windows.net');
+        this._queueServiceClient = QueueServiceClient.fromConnectionString(this._connectionString);
+        const queueUrl = `https://${storageParams.AccountName}.queue.core.windows.net`;
+        this._queueUrl = queueUrl;
     }
 
-    getQueueService() {
-        return this._queueService;
+    getQueueUrl() {
+        return this._queueUrl;
     };
 
-    _getStatsBatch(callback) {
-        var stats = this;
-        var queueService = stats._queueService;
-        const queueName = stats._statsQueueName;
-        const options = {
-            visibilityTimeout: STAT_MSG_VISIBILITY_TIMEOUT_SEC,
-            numOfMessages: STAT_MSG_NUMBER_PER_BATCH
-        };
+    async _getStatsBatch() {
+        const queueName = this._statsQueueName;
         var aggrStats = new CollectionStatRecord();
 
-        queueService.getMessages(queueName, options, function (error, statsMessages) {
-            if (!error) {
-                aggrStats.aggregateAdd(statsMessages);
-                async.filter(statsMessages, function (msg, callback) {
-                    queueService.deleteMessage(queueName, msg.messageId, msg.popReceipt, function (err) {
-                        return callback(null, err);
-                    });
-                }, function (error, undeleted) {
-                    aggrStats.aggregateSubtract(undeleted);
-                    return callback(null, aggrStats);
+        const queueClient = this._queueServiceClient.getQueueClient(queueName);
+
+        try {
+            const receivedMessages = await queueClient.receiveMessages({
+                visibilityTimeout: STAT_MSG_VISIBILITY_TIMEOUT_SEC,
+                numberOfMessages: STAT_MSG_NUMBER_PER_BATCH
+            });
+
+            if (receivedMessages.receivedMessageItems && receivedMessages.receivedMessageItems.length > 0) {
+                aggrStats.aggregateAdd(receivedMessages.receivedMessageItems);
+                
+                const deletePromises = receivedMessages.receivedMessageItems.map(async (msg) => {
+                    try {
+                        await queueClient.deleteMessage(msg.messageId, msg.popReceipt);
+                        return null;
+                    } catch (err) {
+                        return msg;
+                    }
                 });
-            } else if (error && error.code === 'QueueNotFound') {
-                return callback(null, aggrStats);
-            } else {
-                return callback(error, aggrStats);
+                
+                const undeleted = await Promise.all(deletePromises);
+                aggrStats.aggregateSubtract(undeleted.filter(x => x !== null));
             }
-        });
+            
+            return aggrStats;
+        } catch (error) {
+            if (error.code === 'QueueNotFound' || error.code === '404') {
+                return aggrStats;
+            } else {
+                throw error;
+            }
+        }
     };
 
-    getStats(callback) {
-        var stats = this;
-        const queueService = stats._queueService;
-        const queueName = stats._statsQueueName;
+    async getStats() {
+        const queueName = this._statsQueueName;
         var resultStats = new CollectionStatRecord();
         var resultError = '';
 
-        queueService.getQueueMetadata(queueName, function (error, metadata) {
-            if (!error) {
-                var processed = 0;
-                async.doWhilst(function (callback) {
-                    stats._getStatsBatch(function (error, aggrStatsBatch) {
-                        resultError = error ? error + resultError : resultError;
-                        resultStats.add(aggrStatsBatch);
-                        processed += STAT_MSG_NUMBER_PER_BATCH;
-                        return callback();
-                    });
-                }, function () {
-                    return processed < metadata.approximateMessageCount;
-                }, function () {
-                    if (!resultError) {
-                        return callback(null, resultStats);
-                    } else {
-                        return callback(resultError, resultStats);
-                    }
-                });
-            } else if (error && error.code === 'QueueNotFound') {
-                return callback(null, resultStats);
-            } else {
-                return callback(error, resultStats);
+        const queueClient = this._queueServiceClient.getQueueClient(queueName);
+
+        try {
+            const properties = await queueClient.getProperties();
+            const approximateMessageCount = properties.approximateMessagesCount || 0;
+
+            let processed = 0;
+            while (processed < approximateMessageCount) {
+                try {
+                    const aggrStatsBatch = await this._getStatsBatch();
+                    resultStats.add(aggrStatsBatch);
+                } catch (error) {
+                    resultError = `${error}${resultError}`;
+                }
+                processed += STAT_MSG_NUMBER_PER_BATCH;
             }
-        });
+            return resultStats;
+        } catch (error) {
+            if (error.code === 'QueueNotFound' || error.code === '404') {
+                return resultStats;
+            } else {
+                throw error;
+            }
+        }
     };
 
-    putLogStats(collectedBytes, collectedEvents, callback) {
+    async putLogStats(collectedBytes, collectedEvents) {
         const invId = this._context.executionContext.invocationId;
         const logStats = {
             invocationId: invId,
@@ -485,32 +420,38 @@ class AzureCollectionStats {
             bytes: collectedBytes,
             events: collectedEvents
         };
-        return this._putStats(logStats, callback);
+        return this._putStats(logStats);
     };
 
-    _putStats(collectionStats, callback) {
-        var stats = this;
-        const queueName = stats._statsQueueName;
-        var outBinding = stats._outputQueueBinding;
+    async _putStats(collectionStats) {
+        const queueName = this._statsQueueName;
+        var outBinding = this._outputQueueBinding;
         const collectionStatsString = JSON.stringify(collectionStats);
+        
         if (outBinding) {
             outBinding.push(collectionStatsString);
-            return callback(null);
+            return;
         } else {
-            return async.waterfall([
-                function (callback) {
-                    return stats._queueService.createQueueIfNotExists(queueName, callback);
-                },
-                function (metadata, resp, callback) {
-                    return stats._queueService.createMessage(queueName, collectionStatsString, callback);
-                },
-            ], callback);
+            const queueClient = this._queueServiceClient.getQueueClient(queueName);
+
+            try {
+                await queueClient.create();
+            } catch (error) {
+                if (error.code !== 'QueueAlreadyExists' && error.code !== '409') {
+                    throw error;
+                }
+            }
+            
+            await queueClient.sendMessage(collectionStatsString);
         }
     };
 }
+
 module.exports = {
     AzureWebAppStats: AzureWebAppStats,
     AzureCollectionStats: AzureCollectionStats,
     CollectionStatRecord: CollectionStatRecord,
-    AzureAppInsightStats: AzureAppInsightStats
+    AzureAppInsightStats: AzureAppInsightStats,
+    ApplicationInsightsQueryClient: ApplicationInsightsQueryClient
 };
+

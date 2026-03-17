@@ -99,13 +99,21 @@ class AlAzureCollector {
      *  @param {Array.<Object>} messages - the list of JSON objects to be processed as Log data type.
      *  @param {Function} formatFun - message object formatting function. Refer to al-collector-js/al_log.js:buildPayload(parseCallback)
      *  @param {Function} hostmetaElems - (optional) additional host metadata elements. Refer to al-collector-js/al_log.js:buildPayload(hostmetaElems)
-     *  @param {Function} callback
+     *  @param {Function} callback - (optional) callback function. If omitted, returns a Promise.
      *  
-     *  @return {Function} callback - (error, response)
+     *  @return {Promise<Object>} response from Alert Logic Ingestion service
      */
     processLog(messages, formatFun, hostmetaElems, callback) {
         var args = Array.from(arguments);
-        var callback = args.pop();
+        var callback;
+        
+        // Determine if last argument is a callback (only if we have at least 4 arguments)
+        if (args.length >= 4) {
+            callback = args.pop();
+        } else {
+            callback = undefined;
+        }
+        
         messages = args.shift();
         formatFun = args.shift();
         if (args.length > 0) {
@@ -113,55 +121,61 @@ class AlAzureCollector {
         } else {
             hostmetaElems = undefined;
         }
-        // Somebody can still pass 'undefined' as hostmetaElems and it will be added to args list.
-        var hm = hostmetaElems ? hostmetaElems : this._defaultHostmetaElems();
-        var ingestc = this._ingestc;
-        var stats = this._collectionStats;
-        
-        if (messages && messages.length > 0) {
+
+        const processAsync = async () => {
+            // Somebody can still pass 'undefined' as hostmetaElems and it will be added to args list.
+            var hm = hostmetaElems ? hostmetaElems : this._defaultHostmetaElems();
+            var ingestc = this._ingestc;
+            var stats = this._collectionStats;
+            
+            if (!messages || messages.length === 0) {
+                return {};
+            }
+
             let buildPayloadObj = {
-                hostId: this._hostId, 
-                sourceId: this._sourceId, 
-                hostmetaElems: hm, 
-                content: messages, 
-                parseCallback: formatFun, 
-                filterJson: this._filterJson, 
+                hostId: this._hostId,
+                sourceId: this._sourceId,
+                hostmetaElems: hm,
+                content: messages,
+                parseCallback: formatFun,
+                filterJson: this._filterJson,
                 filterRegexp: this._filterRegex
             };
-            alcollector.AlLog.buildPayload(buildPayloadObj, (err, data) => {
-                if (err) {
-                    return callback(err);
-                } else {
-                   ingestc.sendLogmsgs(data.payload).then(resp => {
-                       stats.putLogStats(data.raw_bytes, data.raw_count, (err) => {
-                           if (err) {
-                               return callback(err);
-                           }
 
-                           let lmcStats = this._prepareLmcStats(data.raw_count, data.raw_bytes);
-
-                           ingestc.sendLmcstats(JSON.stringify([lmcStats]))
-                                  .then(resp => {
-                                      return callback(null, resp);
-                                  })
-                                  .catch(exception => {
-                                      return callback(null);
-                                  });
-                       });
-                   })
-                          .catch(err => {
-                              return callback(err);
-                          });
-                }
+            const data = await new Promise((resolve, reject) => {
+                alcollector.AlLog.buildPayload(buildPayloadObj, (err, payloadData) => {
+                    if (err) {
+                        return reject(err);
+                    }
+                    return resolve(payloadData);
+                });
             });
+
+            const resp = await ingestc.sendLogmsgs(data.payload);
+            await stats.putLogStats(data.raw_bytes, data.raw_count);
+
+            let lmcStats = this._prepareLmcStats(data.raw_count, data.raw_bytes);
+            try {
+                await ingestc.sendLmcstats(JSON.stringify([lmcStats]));
+            } catch (error) {
+                return undefined;
+            }
+
+            return resp;
+        };
+
+        // Handle both callback and promise patterns
+        if (typeof callback === 'function') {
+            processAsync()
+                .then(result => callback(null, result))
+                .catch(err => callback(err));
         } else {
-            return callback(null, {});
+            return processAsync();
         }
-        
     }
     
-    processSecMsgs(callback){
-        return callback('not implemented');
+    async processSecMsgs(){
+        throw new Error('not implemented');
     }
 };
 module.exports = {

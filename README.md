@@ -23,23 +23,23 @@ For example:
   "repository": {},
   "private": true,
   "scripts": {
-    "start": "node index.js",
-    "lint": "jshint --exclude \"./node_modules/*\" **/*.js",
-    "test": "JUNIT_REPORT_PATH=./test/report.xml nyc --reporter=cobertura mocha --colors --reporter mocha-jenkins-reporter"
+    "lint": "jshint --show-non-errors --exclude \"./node_modules/*\" **/*.js",
+    "test": "JUNIT_REPORT_PATH=./test/report.xml nyc --reporter=cobertura --reporter=text mocha --colors"
   },
   "devDependencies": {
-    "jshint": "^2.9.5",
-    "mocha": "^3.5.3",
-    "mocha-jenkins-reporter": "^0.3.10",
-    "nyc": "^11.3.0",
-    "rewire": "^2.5.2",
-    "sinon": "^3.3.0"
+    "jshint": "^2.13.6",
+    "mocha": "^10.8.2",
+    "mocha-jenkins-reporter": "^0.4.8",
+    "nyc": "^17.1.0",
+    "sinon": "^18.0.1"
   },
   "dependencies": {
-    "async": "*",
-    "moment": "^2.19.2",
-    "request": "*",
-    "request-promise-native": "*",
+    "@alertlogic/al-collector-js": "^3.0.20",
+    "@azure/arm-appservice": "^5.8.0",
+    "@azure/identity": "^4.3.0",
+    "@azure/storage-blob": "^12.25.0",
+    "@azure/storage-queue": "^12.21.0",
+    "parse-key-value": "^1.0.0",
     "al-azure-collector-js": "git://github.com/alertlogic/al-azure-collector-js#master"
   },
   "author": "Alert Logic Inc."
@@ -75,7 +75,6 @@ Contains helpers for scaling in and out any Azure resources deployed together wi
 # Useful Links
 
 - [Node.js static code analysis tool](http://jshint.com/install/)
-- [Node.js rewire testing tool](https://github.com/jhnns/rewire)
 - [Node.js sinon testing tool](http://sinonjs.org/)
 - [Node.js nock HTTP request mocking tool](https://github.com/nock/nock)
 

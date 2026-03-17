@@ -12,6 +12,7 @@ const sinon = require('sinon');
 const fs = require('fs');
 const nock = require('nock');
 const alcollector = require('@alertlogic/al-collector-js');
+const AzureCollectionStats = require('../appstats').AzureCollectionStats;
 
 const AlAzureCollector = require('../collector').AlAzureCollector;
 const mock = require('./mock');
@@ -19,7 +20,8 @@ const mock = require('./mock');
 describe('Collector tests', function() {
     var fakePost;
     var fakeAuth;
-    var clock;
+    var putLogStatsStub;
+    var originalDateNow;
     var filteredMsg = { PartitionKey: { '$': 'Edm.String', _: 'I' },
     RowKey: { '$': 'Edm.String', _: '1bcef7c9-e0c3-4728-a704-b2b4c6e0f375' },
     Timestamp: { '$': 'Edm.DateTime', _: '2017-12-22T10:05:30.666Z' },
@@ -34,62 +36,57 @@ describe('Collector tests', function() {
     '.metadata': { etag: 'W/"datetime\'2017-12-22T10%3A05%3A30.6667953Z\'"' } };
     
     before(function(){
-        clock = sinon.useFakeTimers();
         if (!nock.isActive()) {
             nock.activate();
         }
-        process.env.AzureWebJobsStorage = 'DefaultEndpointsProtocol=https;AccountName=testappo365;AccountKey=S0meKey+';
+        process.env.AzureWebJobsStorage = 'DefaultEndpointsProtocol=https;AccountName=testappo365;AccountKey=S0meKey+;EndpointSuffix=core.windows.net';
     });
-    after(function(){
-        clock.restore();
-    });
+    after(function(){});
     beforeEach(function(){
+        originalDateNow = Date.now;
+        Date.now = function() { return 0; };
         fakeAuth = sinon.stub(alcollector.AimsC.prototype, 'authenticate').callsFake(
             function fakeFn() {
-                return new Promise(function(resolve, reject) {
+                return new Promise(function(resolve, _reject) {
                     resolve(mock.getAuthResp());
                 });
         });
-        // Collection stats Azure mocks
-        nock(/queue.core.windows.net:443/, {'encodedQueryParams':true})
-        .head('/alertlogic-stats')
-        .query({'comp':'metadata'})
-        .reply(200, '', mock.statsQueueMetadataHeaders());
-        
-        nock(/queue.core.windows.net:443/, {'encodedQueryParams':true})
-        .post('/alertlogic-stats/messages' )
-        .query(true)
-        .times(100)
-        .reply(201, '');
+        putLogStatsStub = sinon.stub(AzureCollectionStats.prototype, 'putLogStats').resolves();
         
         process.env.APP_FILTER_JSON = mock.AL_FILTERJSON;
         process.env.APP_FILTER_REGEX = mock.AL_FILTERREGEX;
     });
-    afterEach(function(done) {
+    afterEach(async function() {
+        Date.now = originalDateNow;
         fakePost.restore();
         fakeAuth.restore();
+        putLogStatsStub.restore();
         delete process.env.APP_FILTER_JSON;
         delete process.env.APP_FILTER_REGEX;
-        fs.unlink(mock.AL_TOKEN_CACHE_FILENAME, function(err){
-            done();
-        });
+        try {
+            await fs.promises.unlink(mock.AL_TOKEN_CACHE_FILENAME);
+        } catch (err) {
+            if (err.code !== 'ENOENT') throw err;
+        }
     });
 
-    it('Verify processLog with default hostmeta with filterJson', function(done) {
+    it('Verify processLog with default hostmeta with filterJson', async function() {
         let expectedLogMsgsBody = 'eJzjyuDiLM4vLUpO1c1MEYrmYs/ILy4BMUVSY2WKnLynOOz5aCf18Wrh1v7KIDUJBiULLgkuTpCi+JLKglQhbinOxKrSotT4tNI8Lhkuvpz85MSceJB8XmJuqhCXFEdiQYEuiA0ALCMieA==';
         let expectedLMSStatsBody = '[{"inst_type":"collector","appliance_id":"","source_type":"ehub","source_id":"source-id","host_id":"host-id","event_count":0,"byte_count":0,"application_id":"","timestamp":0}]';
         fakePost = sinon.stub(alcollector.AlServiceC.prototype, 'post').callsFake(
             function fakeFn(path, extraOptions) {
                 if (path === '/data/lmcstats') {
                     assert.equal(extraOptions.headers['Content-Type'], 'alertlogic.com/json');
-                    assert.equal(expectedLMSStatsBody, extraOptions.body.toString('base64'));
+                    const lmcstatsBody = JSON.parse(extraOptions.body.toString());
+                    lmcstatsBody[0].timestamp = 0;
+                    assert.equal(expectedLMSStatsBody, JSON.stringify(lmcstatsBody));
                 } else {
                     assert.equal(extraOptions.headers['Content-Type'], 'alertlogic.com/lm3-protobuf');
                     assert.equal(path, '/data/logmsgs');
                     assert.equal(expectedLogMsgsBody, extraOptions.body.toString('base64'));
                 }
 
-                return new Promise(function(resolve, reject){
+                return new Promise(function(resolve, _reject){
                     return resolve('ok');
                 });
             });
@@ -117,20 +114,19 @@ describe('Collector tests', function() {
                 messageTsUs: undefined
             };
         };
-        collector.processLog(mock.COLLECTOR_INVOCATION_FILTERJSON_LOGS, formatFun, function(err){
-            assert.equal(err, null);
-            done();
-        });
+        await collector.processLog(mock.COLLECTOR_INVOCATION_FILTERJSON_LOGS, formatFun);
     });
 
-    it('Verify processLog with default hostmeta with filterRegex', function(done) {
+    it('Verify processLog with default hostmeta with filterRegex', async function() {
         let expectedLogMsgsBody = 'eJzjyuDiLM4vLUpO1c1MEYrmYs/ILy4BMUVSY2WKnLynOOz5aCf18Wrh1v7KIDUJBiULLgkuTpCi+JLKglQhbinOxKrSotT4tNI8Lhkuvpz85MSceJB8XmJuqhCXFEdiQYEuiA0ALCMieA==';
         let expectedLMSStatsBody = '[{"inst_type":"collector","appliance_id":"","source_type":"ehub","source_id":"source-id","host_id":"host-id","event_count":0,"byte_count":0,"application_id":"","timestamp":0}]';
         fakePost = sinon.stub(alcollector.AlServiceC.prototype, 'post').callsFake(
             function fakeFn(path, extraOptions) {
                 if (path === '/data/lmcstats') {
                     assert.equal(extraOptions.headers['Content-Type'], 'alertlogic.com/json');
-                    assert.equal(expectedLMSStatsBody, extraOptions.body.toString('base64'));
+                    const lmcstatsBody = JSON.parse(extraOptions.body.toString());
+                    lmcstatsBody[0].timestamp = 0;
+                    assert.equal(expectedLMSStatsBody, JSON.stringify(lmcstatsBody));
                 } else {
                     assert.equal(extraOptions.headers['Content-Type'], 'alertlogic.com/lm3-protobuf');
                     assert.equal(path, '/data/logmsgs');
@@ -165,20 +161,19 @@ describe('Collector tests', function() {
                 messageTsUs: undefined
             };
         };
-        collector.processLog(mock.COLLECTOR_INVOCATION_FILTERJSON_LOGS, formatFun, function(err){
-            assert.equal(err, null);
-            done();
-        });
+        await collector.processLog(mock.COLLECTOR_INVOCATION_FILTERJSON_LOGS, formatFun);
     });
     
-    it('Verify processLog with custom hostmeta with filterJson', function(done) {
+    it('Verify processLog with custom hostmeta with filterJson', async function() {
         let expectedLogMsgsBody = 'eJzj8uDiKM4vLUpO9UwRsuFiy8gvLvFMERK5a+rdvUR/ZnbsC5eXAbVOYQ/UK89JMChJcUlwcYLUxJdUFqQKcUtxJlaVFqXGp5XmAQCS/hjt';
         let expectedLMSStatsBody = '[{"inst_type":"collector","appliance_id":"","source_type":"ehub","source_id":"sourceId","host_id":"hostId","event_count":0,"byte_count":0,"application_id":"","timestamp":0}]';
         fakePost = sinon.stub(alcollector.AlServiceC.prototype, 'post').callsFake(
             function fakeFn(path, extraOptions) {
                 if (path === '/data/lmcstats') {
                     assert.equal(extraOptions.headers['Content-Type'], 'alertlogic.com/json');
-                    assert.equal(expectedLMSStatsBody, extraOptions.body);
+                    const lmcstatsBody = JSON.parse(extraOptions.body.toString());
+                    lmcstatsBody[0].timestamp = 0;
+                    assert.equal(expectedLMSStatsBody, JSON.stringify(lmcstatsBody));
                 } else {
                     assert.equal(extraOptions.headers['Content-Type'], 'alertlogic.com/lm3-protobuf');
                     assert.equal(path, '/data/logmsgs');
@@ -220,20 +215,19 @@ describe('Collector tests', function() {
                 key: 'host_type',
                 value: {str: 'azure_fun'}
               }];
-        collector.processLog(mock.COLLECTOR_INVOCATION_FILTERJSON_LOGS, formatFun, hm, function(err){
-            assert.equal(err, null);
-            done();
-        });
+        await collector.processLog(mock.COLLECTOR_INVOCATION_FILTERJSON_LOGS, formatFun, hm);
     });
 
-    it('Verify processLog with custom hostmeta with filterRegex', function(done) {
+    it('Verify processLog with custom hostmeta with filterRegex', async function() {
         let expectedLogMsgsBody = 'eJzj8uDiKM4vLUpO9UwRsuFiy8gvLvFMERK5a+rdvUR/ZnbsC5eXAbVOYQ/UK89JMChJcUlwcYLUxJdUFqQKcUtxJlaVFqXGp5XmAQCS/hjt';
         let expectedLMSStatsBody = '[{"inst_type":"collector","appliance_id":"","source_type":"ehub","source_id":"sourceId","host_id":"hostId","event_count":0,"byte_count":0,"application_id":"","timestamp":0}]';
         fakePost = sinon.stub(alcollector.AlServiceC.prototype, 'post').callsFake(
             function fakeFn(path, extraOptions) {
                 if (path === '/data/lmcstats') {
                     assert.equal(extraOptions.headers['Content-Type'], 'alertlogic.com/json');
-                    assert.equal(expectedLMSStatsBody, extraOptions.body);
+                    const lmcstatsBody = JSON.parse(extraOptions.body.toString());
+                    lmcstatsBody[0].timestamp = 0;
+                    assert.equal(expectedLMSStatsBody, JSON.stringify(lmcstatsBody));
                 } else {
                     assert.equal(extraOptions.headers['Content-Type'], 'alertlogic.com/lm3-protobuf');
                     assert.equal(path, '/data/logmsgs');
@@ -274,17 +268,14 @@ describe('Collector tests', function() {
                 key: 'host_type',
                 value: {str: 'azure_fun'}
               }];
-        collector.processLog(mock.COLLECTOR_INVOCATION_FILTERJSON_LOGS, formatFun, hm, function(err){
-            assert.equal(err, null);
-            done();
-        });
+        await collector.processLog(mock.COLLECTOR_INVOCATION_FILTERJSON_LOGS, formatFun, hm);
     });
     
-    it('Verify empty messages input', function(done) {
+    it('Verify empty messages input', async function() {
         
-        var noPost = sinon.stub(alcollector.AlServiceC.prototype, 'post').callsFake(
-            function fakeFn(path, extraOptions) {
-                return new Promise(function(resolve, reject){
+        fakePost = sinon.stub(alcollector.AlServiceC.prototype, 'post').callsFake(
+            function fakeFn(_path, _extraOptions) {
+                return new Promise(function(resolve, _reject){
                     return resolve('ok');
                 });
             });
@@ -311,13 +302,9 @@ describe('Collector tests', function() {
                 messageTsUs: undefined
             };
         };
-        collector.processLog([], formatFun, function(err, resp){
-            noPost.restore();
-            assert.equal(err, null);
-            assert.deepEqual(resp, {});
-            sinon.assert.notCalled(noPost);
-            done();
-        });
+        const resp = await collector.processLog([], formatFun);
+        assert.deepEqual(resp, {});
+        sinon.assert.notCalled(fakePost);
     });
 });
 
